@@ -25,7 +25,9 @@ export const Route = createFileRoute("/_authenticated/agencia/")({
 function AgenciaMenu() {
   return (
     <ProtectedRoute role="agencia">
-      {(perfil) => (
+      {(perfil) => {
+        const permissoes = permissoesEfetivas(perfil.equipe_role, perfil.permissoes);
+        return (
         <div className="min-h-screen bg-background">
           <AppHeader perfil={perfil} />
           <main className="mx-auto w-full max-w-[720px] px-4 py-10 sm:py-14">
@@ -35,30 +37,37 @@ function AgenciaMenu() {
             <h1 className="mt-1 text-2xl font-bold text-ink sm:text-3xl">Área da Agência</h1>
 
             <div className="mt-7 flex flex-col gap-4">
-              <MenuCard
-                titulo="Configurar Clientes"
-                descricao="Cadastre e ajuste as contas dos clientes, defina o identificador de cliente e o nível de acesso."
-                icone={Users}
-                cor="violet"
-                badge="Ativo"
-                to="/agencia/clientes"
-              />
-              <MenuCard
-                titulo="Área do Cliente"
-                descricao="Selecione um cliente e abra o portal dele para ver o menu e o dashboard de métricas."
-                icone={LayoutDashboard}
-                cor="indigo"
-                badge="Ativo"
-                to="/agencia/visualizar"
-              />
-              <MenuCard
-                titulo="Equipe"
-                descricao="Configure credenciais e níveis de acesso do time people (super admin, gestor e analista)."
-                icone={ShieldCheck}
-                cor="teal"
-                badge="Ativo"
-                to="/agencia/equipe"
-              />
+              {podeVer(permissoes, "clientes") ? (
+                <MenuCard
+                  titulo="Configurar Clientes"
+                  descricao="Cadastre e ajuste as contas dos clientes, defina o identificador de cliente e o nível de acesso."
+                  icone={Users}
+                  cor="violet"
+                  badge="Ativo"
+                  to="/agencia/clientes"
+                />
+              ) : null}
+              {podeVer(permissoes, "area_cliente") ? (
+                <MenuCard
+                  titulo="Área do Cliente"
+                  descricao="Selecione um cliente e abra o portal dele para ver o menu e o dashboard de métricas."
+                  icone={LayoutDashboard}
+                  cor="indigo"
+                  badge="Ativo"
+                  to="/agencia/visualizar"
+                />
+              ) : null}
+              {ehAdminEquipe(perfil.equipe_role) ? (
+                <MenuCard
+                  titulo="Equipe"
+                  descricao="Configure credenciais, níveis de acesso e permissões por aba do time people."
+                  icone={ShieldCheck}
+                  cor="teal"
+                  badge="Ativo"
+                  to="/agencia/equipe"
+                />
+              ) : null}
+
 
 
               <MenuCard
