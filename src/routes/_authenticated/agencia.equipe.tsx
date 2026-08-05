@@ -295,22 +295,25 @@ function Lista({ perfil }: { perfil: Perfil }) {
               </div>
 
               {editavel ? (
-                <div className="mt-5 flex items-center gap-3">
-                  <button
-                    onClick={() => void salvar(membro)}
-                    disabled={salvandoId === membro.id}
-                    className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-brand-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
-                  >
-                    {salvandoId === membro.id ? <Loader2 className="size-4 animate-spin" /> : null}
-                    Salvar
-                  </button>
-                  {salvoId === membro.id ? (
-                    <span className="inline-flex items-center gap-1 text-sm text-ink-muted">
-                      <Check className="size-4" />
-                      Salvo
-                    </span>
-                  ) : null}
-                </div>
+                <>
+                  <div className="mt-5 flex items-center gap-3">
+                    <button
+                      onClick={() => void salvar(membro)}
+                      disabled={salvandoId === membro.id}
+                      className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-brand-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+                    >
+                      {salvandoId === membro.id ? <Loader2 className="size-4 animate-spin" /> : null}
+                      Salvar
+                    </button>
+                    {salvoId === membro.id ? (
+                      <span className="inline-flex items-center gap-1 text-sm text-ink-muted">
+                        <Check className="size-4" />
+                        Salvo
+                      </span>
+                    ) : null}
+                  </div>
+                  <TrocarSenha membroId={membro.id} />
+                </>
               ) : (
                 <p className="mt-4 text-xs text-ink-muted">
                   {membro.id === perfil.id
@@ -318,6 +321,7 @@ function Lista({ perfil }: { perfil: Perfil }) {
                     : "Apenas o super admin pode alterar contas de admin."}
                 </p>
               )}
+
             </div>
           );
         })}
