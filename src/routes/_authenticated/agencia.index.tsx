@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { BarChart3, FileText, LayoutDashboard, Megaphone, Users } from "lucide-react";
+import { BarChart3, FileText, LayoutDashboard, Megaphone, ShieldCheck, Users } from "lucide-react";
 import { AppHeader } from "@/components/AppHeader";
 import { MenuCard } from "@/components/MenuCard";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
