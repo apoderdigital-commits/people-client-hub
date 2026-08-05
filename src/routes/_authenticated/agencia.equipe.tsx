@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Check, Loader2, Search, ShieldCheck } from "lucide-react";
+import { useServerFn } from "@tanstack/react-start";
+import { Check, KeyRound, Loader2, Search, ShieldCheck, UserPlus } from "lucide-react";
 import { AppHeader } from "@/components/AppHeader";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { supabase } from "@/integrations/supabase/client";
 import type { Perfil } from "@/hooks/use-auth";
+import { criarAcessoEquipe, definirSenhaEquipe } from "@/lib/equipe.functions";
 import {
   ABAS,
   ehAdminEquipe,
@@ -15,6 +17,7 @@ import {
   type NivelVisualizacao,
   type Permissoes,
 } from "@/lib/equipe";
+
 
 export const Route = createFileRoute("/_authenticated/agencia/equipe")({
   ssr: false,
