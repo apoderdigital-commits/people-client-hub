@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Check, Loader2, Plus, Search, Users } from "lucide-react";
 import { AppHeader } from "@/components/AppHeader";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { permissoesEfetivas, podeEditar, podeVer } from "@/lib/equipe";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/_authenticated/agencia/clientes")({
