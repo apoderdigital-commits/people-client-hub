@@ -1,16 +1,19 @@
 import { useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import type { EquipeRole } from "@/lib/equipe";
 
 export type Perfil = {
   id: string;
   nome: string;
   email: string;
   role: "cliente" | "agencia";
-  equipe_role: "super_admin" | "gestor" | "analista" | null;
+  equipe_role: EquipeRole | null;
+  permissoes: unknown;
   cliente_id: string | null;
   avatar_url: string | null;
 };
+
 
 
 export function useAuth() {
