@@ -3,6 +3,7 @@ import { BarChart3, FileText, LayoutDashboard, Megaphone, ShieldCheck, Users } f
 import { AppHeader } from "@/components/AppHeader";
 import { MenuCard } from "@/components/MenuCard";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { ehAdminEquipe, permissoesEfetivas, podeVer } from "@/lib/equipe";
 
 export const Route = createFileRoute("/_authenticated/agencia/")({
   head: () => ({
