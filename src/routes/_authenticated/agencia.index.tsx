@@ -94,7 +94,9 @@ function AgenciaMenu() {
             </div>
           </main>
         </div>
-      )}
+        );
+      }}
     </ProtectedRoute>
+
   );
 }
