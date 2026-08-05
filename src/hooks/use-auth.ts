@@ -1,16 +1,19 @@
 import { useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import type { EquipeRole } from "@/lib/equipe";
 
 export type Perfil = {
   id: string;
   nome: string;
   email: string;
   role: "cliente" | "agencia";
-  equipe_role: "super_admin" | "gestor" | "analista" | null;
+  equipe_role: EquipeRole | null;
+  permissoes: unknown;
   cliente_id: string | null;
   avatar_url: string | null;
 };
+
 
 
 export function useAuth() {
@@ -24,7 +27,7 @@ export function useAuth() {
     async function carregarPerfil(userId: string) {
       const { data } = await supabase
         .from("profiles")
-        .select("id, nome, email, role, equipe_role, cliente_id, avatar_url")
+        .select("id, nome, email, role, equipe_role, permissoes, cliente_id, avatar_url")
         .eq("id", userId)
         .maybeSingle();
       if (ativo) setPerfil((data as Perfil | null) ?? null);

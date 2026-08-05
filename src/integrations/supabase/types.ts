@@ -95,6 +95,7 @@ export type Database = {
           equipe_role: Database["public"]["Enums"]["equipe_role"] | null
           id: string
           nome: string
+          permissoes: Json
           role: Database["public"]["Enums"]["app_role"]
         }
         Insert: {
@@ -105,6 +106,7 @@ export type Database = {
           equipe_role?: Database["public"]["Enums"]["equipe_role"] | null
           id: string
           nome?: string
+          permissoes?: Json
           role?: Database["public"]["Enums"]["app_role"]
         }
         Update: {
@@ -115,6 +117,7 @@ export type Database = {
           equipe_role?: Database["public"]["Enums"]["equipe_role"] | null
           id?: string
           nome?: string
+          permissoes?: Json
           role?: Database["public"]["Enums"]["app_role"]
         }
         Relationships: []
@@ -133,11 +136,21 @@ export type Database = {
         Returns: boolean
       }
       is_equipe: { Args: { _user_id: string }; Returns: boolean }
+      is_equipe_admin: { Args: { _user_id: string }; Returns: boolean }
       is_super_admin: { Args: { _user_id: string }; Returns: boolean }
     }
     Enums: {
       app_role: "cliente" | "agencia"
-      equipe_role: "super_admin" | "gestor" | "analista"
+      equipe_role:
+        | "super_admin"
+        | "gestor"
+        | "analista"
+        | "admin"
+        | "gestor_trafego"
+        | "social_media"
+        | "gerente_projeto"
+        | "designer"
+        | "editor_video"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -266,7 +279,17 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["cliente", "agencia"],
-      equipe_role: ["super_admin", "gestor", "analista"],
+      equipe_role: [
+        "super_admin",
+        "gestor",
+        "analista",
+        "admin",
+        "gestor_trafego",
+        "social_media",
+        "gerente_projeto",
+        "designer",
+        "editor_video",
+      ],
     },
   },
 } as const

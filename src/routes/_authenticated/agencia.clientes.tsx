@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Check, Loader2, Plus, Search, Users } from "lucide-react";
 import { AppHeader } from "@/components/AppHeader";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { permissoesEfetivas, podeEditar, podeVer } from "@/lib/equipe";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/_authenticated/agencia/clientes")({
@@ -65,7 +66,30 @@ function ConfigurarClientes() {
               </div>
             </div>
 
-            <Painel />
+            {(() => {
+              const permissoes = permissoesEfetivas(perfil.equipe_role, perfil.permissoes);
+              if (!podeVer(permissoes, "clientes")) {
+                return (
+                  <p className="mt-7 rounded-2xl border border-border bg-card px-4 py-6 text-sm text-ink-muted shadow-card">
+                    Você não tem permissão para visualizar esta aba.
+                  </p>
+                );
+              }
+              const somenteLeitura = !podeEditar(permissoes, "clientes");
+              return (
+                <>
+                  {somenteLeitura ? (
+                    <p className="mt-6 rounded-xl border border-border bg-card px-4 py-3 text-sm text-ink-muted">
+                      Seu acesso a esta aba é somente de visualização.
+                    </p>
+                  ) : null}
+                  <fieldset disabled={somenteLeitura} className="min-w-0 border-0 p-0">
+                    <Painel />
+                  </fieldset>
+                </>
+              );
+            })()}
+
           </main>
         </div>
       )}

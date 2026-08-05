@@ -5,6 +5,7 @@ import { PeopleLogo } from "@/components/PeopleLogo";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { supabase } from "@/integrations/supabase/client";
 import type { Perfil } from "@/hooks/use-auth";
+import { ehAdminEquipe, permissoesEfetivas, podeVer } from "@/lib/equipe";
 
 const linkBase =
   "rounded-md px-2.5 py-1.5 text-xs font-medium text-shell-foreground/70 transition-colors hover:bg-shell-2 hover:text-shell-foreground sm:text-sm";
@@ -22,6 +23,9 @@ export function AppHeader({ perfil }: { perfil: Perfil | null }) {
 
   const iniciais = (perfil?.nome || perfil?.email || "?").trim().charAt(0).toUpperCase();
   const equipe = perfil?.role === "agencia";
+  const permissoes = permissoesEfetivas(perfil?.equipe_role ?? null, perfil?.permissoes);
+  const verEquipe = ehAdminEquipe(perfil?.equipe_role ?? null);
+  const verClientes = podeVer(permissoes, "clientes");
 
   return (
     <header className="bg-shell">
@@ -38,23 +42,28 @@ export function AppHeader({ perfil }: { perfil: Perfil | null }) {
               >
                 Menu
               </Link>
-              <Link
-                to="/agencia/clientes"
-                activeProps={{ className: "bg-shell-2 text-shell-foreground" }}
-                className={linkBase}
-              >
-                Clientes
-              </Link>
-              <Link
-                to="/agencia/equipe"
-                activeProps={{ className: "bg-shell-2 text-shell-foreground" }}
-                className={linkBase}
-              >
-                Equipe
-              </Link>
+              {verClientes ? (
+                <Link
+                  to="/agencia/clientes"
+                  activeProps={{ className: "bg-shell-2 text-shell-foreground" }}
+                  className={linkBase}
+                >
+                  Clientes
+                </Link>
+              ) : null}
+              {verEquipe ? (
+                <Link
+                  to="/agencia/equipe"
+                  activeProps={{ className: "bg-shell-2 text-shell-foreground" }}
+                  className={linkBase}
+                >
+                  Equipe
+                </Link>
+              ) : null}
             </nav>
           ) : null}
         </div>
+
 
         <div className="flex items-center gap-1 sm:gap-2">
           <ThemeToggle />
