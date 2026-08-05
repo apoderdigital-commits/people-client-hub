@@ -335,3 +335,223 @@ function Lista({ perfil }: { perfil: Perfil }) {
     </div>
   );
 }
+
+const inputCls =
+  "mt-1 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm text-ink outline-none transition-colors focus:border-brand disabled:opacity-60";
+
+function NovoAcesso({
+  niveis,
+  onCriado,
+}: {
+  niveis: { valor: EquipeRole; label: string }[];
+  onCriado: (membro: Membro) => void;
+}) {
+  const criar = useServerFn(criarAcessoEquipe);
+  const [aberto, setAberto] = useState(false);
+  const [nome, setNome] = useState("");
+  const [email, setEmail] = useState("");
+  const [senha, setSenha] = useState("");
+  const [nivel, setNivel] = useState<EquipeRole | "">("");
+  const [permissoes, setPermissoes] = useState<Permissoes>(lerPermissoes(null));
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [ok, setOk] = useState(false);
+
+  async function enviar(e: React.FormEvent) {
+    e.preventDefault();
+    if (!nivel) return setErro("Escolha um nível de acesso.");
+    setEnviando(true);
+    setErro(null);
+    setOk(false);
+    try {
+      const res = await criar({
+        data: { nome, email, senha, equipe_role: nivel, permissoes },
+      });
+      onCriado({
+        id: res.id,
+        nome,
+        email,
+        role: "agencia",
+        equipe_role: nivel,
+        permissoes,
+      });
+      setOk(true);
+      setNome("");
+      setEmail("");
+      setSenha("");
+      setNivel("");
+      setPermissoes(lerPermissoes(null));
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Não foi possível criar o acesso.");
+    }
+    setEnviando(false);
+  }
+
+  if (!aberto) {
+    return (
+      <button
+        onClick={() => setAberto(true)}
+        className="mb-4 inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-brand-foreground transition-opacity hover:opacity-90"
+      >
+        <UserPlus className="size-4" />
+        Criar acesso da equipe
+      </button>
+    );
+  }
+
+  return (
+    <form onSubmit={enviar} className="mb-5 rounded-2xl border border-border bg-card p-5 shadow-card">
+      <p className="text-sm font-semibold text-ink">Novo acesso da equipe</p>
+      <p className="mt-1 text-xs text-ink-muted">
+        O integrante entra no portal com este e-mail e senha. A senha pode ser alterada depois.
+      </p>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <label className="block">
+          <span className="text-xs font-medium text-ink-muted">Nome</span>
+          <input value={nome} onChange={(e) => setNome(e.target.value)} required className={inputCls} />
+        </label>
+        <label className="block">
+          <span className="text-xs font-medium text-ink-muted">E-mail</span>
+          <input
+            type="email"
+            autoComplete="off"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            className={inputCls}
+          />
+        </label>
+        <label className="block">
+          <span className="text-xs font-medium text-ink-muted">Senha (mín. 8 caracteres)</span>
+          <input
+            type="password"
+            autoComplete="new-password"
+            minLength={8}
+            value={senha}
+            onChange={(e) => setSenha(e.target.value)}
+            required
+            className={inputCls}
+          />
+        </label>
+        <label className="block">
+          <span className="text-xs font-medium text-ink-muted">Nível de acesso</span>
+          <select
+            value={nivel}
+            onChange={(e) => setNivel(e.target.value as EquipeRole | "")}
+            required
+            className={inputCls}
+          >
+            <option value="">Selecione</option>
+            {niveis.map((n) => (
+              <option key={n.valor} value={n.valor}>
+                {n.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {nivel && !ehAdminEquipe(nivel) ? (
+        <div className="mt-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+            Visualização por aba
+          </p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            {ABAS.map((aba) => (
+              <label key={aba.chave} className="block">
+                <span className="text-xs font-medium text-ink-muted">{aba.label}</span>
+                <select
+                  value={permissoes[aba.chave] ?? "nenhum"}
+                  onChange={(e) =>
+                    setPermissoes((p) => ({
+                      ...p,
+                      [aba.chave]: e.target.value as NivelVisualizacao,
+                    }))
+                  }
+                  className={inputCls}
+                >
+                  <option value="nenhum">Sem acesso</option>
+                  <option value="ver">Visualizar</option>
+                  <option value="editar">Visualizar e editar</option>
+                </select>
+              </label>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {erro ? <p className="mt-4 text-sm text-destructive">{erro}</p> : null}
+      {ok ? <p className="mt-4 text-sm text-success">Acesso criado com sucesso.</p> : null}
+
+      <div className="mt-5 flex items-center gap-3">
+        <button
+          type="submit"
+          disabled={enviando}
+          className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-brand-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+        >
+          {enviando ? <Loader2 className="size-4 animate-spin" /> : null}
+          Criar acesso
+        </button>
+        <button
+          type="button"
+          onClick={() => setAberto(false)}
+          className="text-sm font-medium text-ink-muted transition-colors hover:text-brand"
+        >
+          Cancelar
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function TrocarSenha({ membroId }: { membroId: string }) {
+  const definir = useServerFn(definirSenhaEquipe);
+  const [senha, setSenha] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [ok, setOk] = useState(false);
+
+  async function enviar() {
+    setEnviando(true);
+    setErro(null);
+    setOk(false);
+    try {
+      await definir({ data: { userId: membroId, senha } });
+      setSenha("");
+      setOk(true);
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Não foi possível atualizar a senha.");
+    }
+    setEnviando(false);
+  }
+
+  return (
+    <div className="mt-4 border-t border-border pt-4">
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="min-w-[200px] flex-1">
+          <span className="text-xs font-medium text-ink-muted">Nova senha (mín. 8 caracteres)</span>
+          <input
+            type="password"
+            autoComplete="new-password"
+            value={senha}
+            onChange={(e) => setSenha(e.target.value)}
+            className={inputCls}
+            placeholder="••••••••"
+          />
+        </label>
+        <button
+          type="button"
+          onClick={() => void enviar()}
+          disabled={enviando || senha.length < 8}
+          className="inline-flex items-center gap-2 rounded-xl border border-input px-4 py-2 text-sm font-semibold text-ink transition-colors hover:border-brand disabled:opacity-60"
+        >
+          {enviando ? <Loader2 className="size-4 animate-spin" /> : <KeyRound className="size-4" />}
+          Definir senha
+        </button>
+      </div>
+      {erro ? <p className="mt-2 text-sm text-destructive">{erro}</p> : null}
+      {ok ? <p className="mt-2 text-sm text-success">Senha atualizada.</p> : null}
+    </div>
+  );
+}
