@@ -38,7 +38,7 @@ export const Route = createFileRoute("/_authenticated/cliente/metricas")({
       },
     ],
   }),
-  component: MetricasPage;
+  component: MetricasPage,
 });
 
 const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
