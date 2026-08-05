@@ -45,11 +45,11 @@ function AgenciaMenu() {
               />
               <MenuCard
                 titulo="Área do Cliente"
-                descricao="Abra o portal do cliente para ver o menu e o dashboard de métricas como o cliente vê."
+                descricao="Selecione um cliente e abra o portal dele para ver o menu e o dashboard de métricas."
                 icone={LayoutDashboard}
                 cor="indigo"
                 badge="Ativo"
-                to="/cliente"
+                to="/agencia/visualizar"
               />
 
               <MenuCard

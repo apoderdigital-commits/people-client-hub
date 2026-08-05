@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthenticatedAgenciaIndexRouteImport } from './routes/_authenticated/agencia.index'
 import { Route as AuthenticatedAgenciaClientesRouteImport } from './routes/_authenticated/agencia.clientes'
+import { Route as AuthenticatedAgenciaVisualizarRouteImport } from './routes/_authenticated/agencia.visualizar'
 import { Route as AuthenticatedClienteIndexRouteImport } from './routes/_authenticated/cliente.index'
 import { Route as AuthenticatedClienteMetricasRouteImport } from './routes/_authenticated/cliente.metricas'
 
@@ -37,6 +38,12 @@ const AuthenticatedAgenciaClientesRoute =
     path: '/agencia/clientes',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedAgenciaVisualizarRoute =
+  AuthenticatedAgenciaVisualizarRouteImport.update({
+    id: '/agencia/visualizar',
+    path: '/agencia/visualizar',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedClienteIndexRoute =
   AuthenticatedClienteIndexRouteImport.update({
     id: '/cliente/',
@@ -53,6 +60,7 @@ const AuthenticatedClienteMetricasRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/agencia/clientes': typeof AuthenticatedAgenciaClientesRoute
+  '/agencia/visualizar': typeof AuthenticatedAgenciaVisualizarRoute
   '/cliente/metricas': typeof AuthenticatedClienteMetricasRoute
   '/agencia/': typeof AuthenticatedAgenciaIndexRoute
   '/cliente/': typeof AuthenticatedClienteIndexRoute
@@ -60,6 +68,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/agencia/clientes': typeof AuthenticatedAgenciaClientesRoute
+  '/agencia/visualizar': typeof AuthenticatedAgenciaVisualizarRoute
   '/cliente/metricas': typeof AuthenticatedClienteMetricasRoute
   '/agencia': typeof AuthenticatedAgenciaIndexRoute
   '/cliente': typeof AuthenticatedClienteIndexRoute
@@ -69,6 +78,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/_authenticated/agencia/clientes': typeof AuthenticatedAgenciaClientesRoute
+  '/_authenticated/agencia/visualizar': typeof AuthenticatedAgenciaVisualizarRoute
   '/_authenticated/cliente/metricas': typeof AuthenticatedClienteMetricasRoute
   '/_authenticated/agencia/': typeof AuthenticatedAgenciaIndexRoute
   '/_authenticated/cliente/': typeof AuthenticatedClienteIndexRoute
@@ -76,14 +86,26 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/agencia/clientes' | '/cliente/metricas' | '/agencia/' | '/cliente/'
+    | '/'
+    | '/agencia/clientes'
+    | '/agencia/visualizar'
+    | '/cliente/metricas'
+    | '/agencia/'
+    | '/cliente/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/agencia/clientes' | '/cliente/metricas' | '/agencia' | '/cliente'
+  to:
+    | '/'
+    | '/agencia/clientes'
+    | '/agencia/visualizar'
+    | '/cliente/metricas'
+    | '/agencia'
+    | '/cliente'
   id:
     | '__root__'
     | '/'
     | '/_authenticated'
     | '/_authenticated/agencia/clientes'
+    | '/_authenticated/agencia/visualizar'
     | '/_authenticated/cliente/metricas'
     | '/_authenticated/agencia/'
     | '/_authenticated/cliente/'
@@ -124,6 +146,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAgenciaClientesRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/agencia/visualizar': {
+      id: '/_authenticated/agencia/visualizar'
+      path: '/agencia/visualizar'
+      fullPath: '/agencia/visualizar'
+      preLoaderRoute: typeof AuthenticatedAgenciaVisualizarRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/cliente/': {
       id: '/_authenticated/cliente/'
       path: '/cliente'
@@ -143,6 +172,7 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedAgenciaClientesRoute: typeof AuthenticatedAgenciaClientesRoute
+  AuthenticatedAgenciaVisualizarRoute: typeof AuthenticatedAgenciaVisualizarRoute
   AuthenticatedClienteMetricasRoute: typeof AuthenticatedClienteMetricasRoute
   AuthenticatedAgenciaIndexRoute: typeof AuthenticatedAgenciaIndexRoute
   AuthenticatedClienteIndexRoute: typeof AuthenticatedClienteIndexRoute
@@ -150,6 +180,7 @@ interface AuthenticatedRouteRouteChildren {
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAgenciaClientesRoute: AuthenticatedAgenciaClientesRoute,
+  AuthenticatedAgenciaVisualizarRoute: AuthenticatedAgenciaVisualizarRoute,
   AuthenticatedClienteMetricasRoute: AuthenticatedClienteMetricasRoute,
   AuthenticatedAgenciaIndexRoute: AuthenticatedAgenciaIndexRoute,
   AuthenticatedClienteIndexRoute: AuthenticatedClienteIndexRoute,
