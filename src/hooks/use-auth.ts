@@ -27,7 +27,7 @@ export function useAuth() {
     async function carregarPerfil(userId: string) {
       const { data } = await supabase
         .from("profiles")
-        .select("id, nome, email, role, equipe_role, cliente_id, avatar_url")
+        .select("id, nome, email, role, equipe_role, permissoes, cliente_id, avatar_url")
         .eq("id", userId)
         .maybeSingle();
       if (ativo) setPerfil((data as Perfil | null) ?? null);
