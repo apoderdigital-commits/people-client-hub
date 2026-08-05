@@ -13,6 +13,7 @@ import {
 import { AppHeader } from "@/components/AppHeader";
 import { KpiCard } from "@/components/KpiCard";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { VisaoClienteBanner, VisaoClienteGate } from "@/components/VisaoCliente";
 import {
   CAMPANHAS,
   PERIODOS,
@@ -90,8 +91,10 @@ function MetricasPage() {
   return (
     <ProtectedRoute role="cliente">
       {(perfil) => (
+        <VisaoClienteGate perfil={perfil}>
         <div className="min-h-screen bg-background">
           <AppHeader perfil={perfil} />
+          <VisaoClienteBanner perfil={perfil} />
           <main className="mx-auto w-full max-w-6xl px-4 py-8">
             <Link
               to="/cliente"
@@ -256,6 +259,7 @@ function MetricasPage() {
             </section>
           </main>
         </div>
+        </VisaoClienteGate>
       )}
     </ProtectedRoute>
   );

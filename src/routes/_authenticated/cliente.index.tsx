@@ -3,6 +3,7 @@ import { BarChart3, FileText, Image, MessageCircle, Wallet } from "lucide-react"
 import { AppHeader } from "@/components/AppHeader";
 import { MenuCard } from "@/components/MenuCard";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { VisaoClienteBanner, VisaoClienteGate } from "@/components/VisaoCliente";
 
 export const Route = createFileRoute("/_authenticated/cliente/")({
   head: () => ({
@@ -26,8 +27,10 @@ function ClienteMenu() {
   return (
     <ProtectedRoute role="cliente">
       {(perfil) => (
+        <VisaoClienteGate perfil={perfil}>
         <div className="min-h-screen bg-background">
           <AppHeader perfil={perfil} />
+          <VisaoClienteBanner perfil={perfil} />
           <main className="mx-auto w-full max-w-[720px] px-4 py-10 sm:py-14">
             <p className="text-sm text-ink-muted">
               Bem-vindo(a) de volta, {(perfil.nome || perfil.email).split(" ")[0]}
@@ -76,6 +79,7 @@ function ClienteMenu() {
             </div>
           </main>
         </div>
+        </VisaoClienteGate>
       )}
     </ProtectedRoute>
   );
