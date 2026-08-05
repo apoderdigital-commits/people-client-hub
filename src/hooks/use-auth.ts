@@ -7,9 +7,11 @@ export type Perfil = {
   nome: string;
   email: string;
   role: "cliente" | "agencia";
+  equipe_role: "super_admin" | "gestor" | "analista" | null;
   cliente_id: string | null;
   avatar_url: string | null;
 };
+
 
 export function useAuth() {
   const [session, setSession] = useState<Session | null>(null);
