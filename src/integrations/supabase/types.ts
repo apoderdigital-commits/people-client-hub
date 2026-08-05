@@ -14,6 +14,42 @@ export type Database = {
   }
   public: {
     Tables: {
+      clientes: {
+        Row: {
+          ad_account_id: string
+          created_at: string
+          id: string
+          identificador: string
+          investimento_mensal: number
+          meta_faturamento: number
+          meta_token: string
+          nome: string
+          updated_at: string
+        }
+        Insert: {
+          ad_account_id?: string
+          created_at?: string
+          id?: string
+          identificador: string
+          investimento_mensal?: number
+          meta_faturamento?: number
+          meta_token?: string
+          nome: string
+          updated_at?: string
+        }
+        Update: {
+          ad_account_id?: string
+          created_at?: string
+          id?: string
+          identificador?: string
+          investimento_mensal?: number
+          meta_faturamento?: number
+          meta_token?: string
+          nome?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       metricas_diarias: {
         Row: {
           cliente_id: string
@@ -56,6 +92,7 @@ export type Database = {
           cliente_id: string | null
           created_at: string
           email: string
+          equipe_role: Database["public"]["Enums"]["equipe_role"] | null
           id: string
           nome: string
           role: Database["public"]["Enums"]["app_role"]
@@ -65,6 +102,7 @@ export type Database = {
           cliente_id?: string | null
           created_at?: string
           email?: string
+          equipe_role?: Database["public"]["Enums"]["equipe_role"] | null
           id: string
           nome?: string
           role?: Database["public"]["Enums"]["app_role"]
@@ -74,6 +112,7 @@ export type Database = {
           cliente_id?: string | null
           created_at?: string
           email?: string
+          equipe_role?: Database["public"]["Enums"]["equipe_role"] | null
           id?: string
           nome?: string
           role?: Database["public"]["Enums"]["app_role"]
@@ -93,9 +132,12 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_equipe: { Args: { _user_id: string }; Returns: boolean }
+      is_super_admin: { Args: { _user_id: string }; Returns: boolean }
     }
     Enums: {
       app_role: "cliente" | "agencia"
+      equipe_role: "super_admin" | "gestor" | "analista"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -224,6 +266,7 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["cliente", "agencia"],
+      equipe_role: ["super_admin", "gestor", "analista"],
     },
   },
 } as const
