@@ -7,7 +7,6 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Perfil } from "@/hooks/use-auth";
 import {
   ABAS,
-  NIVEIS_LEGADOS,
   ehAdminEquipe,
   lerPermissoes,
   niveisQuePodeConceder,
@@ -253,9 +252,6 @@ function Lista({ perfil }: { perfil: Perfil }) {
                         {rotuloNivel(membro.equipe_role)}
                       </option>
                     ) : null}
-                    {NIVEIS_LEGADOS.filter((n) => n.valor === membro.equipe_role).length === 0
-                      ? null
-                      : null}
                   </select>
                 </label>
               </div>
