@@ -185,7 +185,13 @@ function Lista({ perfil }: { perfil: Perfil }) {
           : "Como admin você pode conceder níveis de admin para baixo (gestor de tráfego, social media, gerente de projeto, designer e editor de vídeo)."}
       </p>
 
+      <NovoAcesso
+        niveis={niveisDisponiveis}
+        onCriado={(m) => setMembros((atual) => [...atual, m].sort((a, b) => a.email.localeCompare(b.email)))}
+      />
+
       <div className="flex items-center gap-2 rounded-xl border border-input bg-card px-3 py-2">
+
         <Search className="size-4 shrink-0 text-ink-muted" />
         <input
           value={busca}
