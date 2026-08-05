@@ -1,10 +1,13 @@
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { LogOut } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { PeopleLogo } from "@/components/PeopleLogo";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { supabase } from "@/integrations/supabase/client";
 import type { Perfil } from "@/hooks/use-auth";
+
+const linkBase =
+  "rounded-md px-2.5 py-1.5 text-xs font-medium text-shell-foreground/70 transition-colors hover:bg-shell-2 hover:text-shell-foreground sm:text-sm";
 
 export function AppHeader({ perfil }: { perfil: Perfil | null }) {
   const navigate = useNavigate();
@@ -18,11 +21,41 @@ export function AppHeader({ perfil }: { perfil: Perfil | null }) {
   }
 
   const iniciais = (perfil?.nome || perfil?.email || "?").trim().charAt(0).toUpperCase();
+  const equipe = perfil?.role === "agencia";
 
   return (
     <header className="bg-shell">
       <div className="mx-auto grid max-w-6xl grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3">
-        <PeopleLogo />
+        <div className="flex min-w-0 items-center gap-3 sm:gap-5">
+          <PeopleLogo />
+          {equipe ? (
+            <nav className="flex items-center gap-0.5 overflow-x-auto sm:gap-1">
+              <Link
+                to="/agencia"
+                activeOptions={{ exact: true }}
+                activeProps={{ className: "bg-shell-2 text-shell-foreground" }}
+                className={linkBase}
+              >
+                Menu
+              </Link>
+              <Link
+                to="/agencia/clientes"
+                activeProps={{ className: "bg-shell-2 text-shell-foreground" }}
+                className={linkBase}
+              >
+                Clientes
+              </Link>
+              <Link
+                to="/agencia/equipe"
+                activeProps={{ className: "bg-shell-2 text-shell-foreground" }}
+                className={linkBase}
+              >
+                Equipe
+              </Link>
+            </nav>
+          ) : null}
+        </div>
+
         <div className="flex items-center gap-1 sm:gap-2">
           <ThemeToggle />
           <button

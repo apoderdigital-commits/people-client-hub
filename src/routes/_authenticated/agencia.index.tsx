@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { BarChart3, FileText, LayoutDashboard, Megaphone, Users } from "lucide-react";
+import { BarChart3, FileText, LayoutDashboard, Megaphone, ShieldCheck, Users } from "lucide-react";
 import { AppHeader } from "@/components/AppHeader";
 import { MenuCard } from "@/components/MenuCard";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
@@ -51,6 +51,15 @@ function AgenciaMenu() {
                 badge="Ativo"
                 to="/agencia/visualizar"
               />
+              <MenuCard
+                titulo="Equipe"
+                descricao="Configure credenciais e níveis de acesso do time people (super admin, gestor e analista)."
+                icone={ShieldCheck}
+                cor="teal"
+                badge="Ativo"
+                to="/agencia/equipe"
+              />
+
 
               <MenuCard
                 comingSoon
