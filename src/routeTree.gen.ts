@@ -10,33 +10,75 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
+import { Route as AuthenticatedAgenciaRouteImport } from './routes/_authenticated/agencia'
+import { Route as AuthenticatedClienteIndexRouteImport } from './routes/_authenticated/cliente.index'
+import { Route as AuthenticatedClienteMetricasRouteImport } from './routes/_authenticated/cliente.metricas'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
+  id: '/_authenticated',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedAgenciaRoute = AuthenticatedAgenciaRouteImport.update({
+  id: '/agencia',
+  path: '/agencia',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedClienteIndexRoute =
+  AuthenticatedClienteIndexRouteImport.update({
+    id: '/cliente/',
+    path: '/cliente/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedClienteMetricasRoute =
+  AuthenticatedClienteMetricasRouteImport.update({
+    id: '/cliente/metricas',
+    path: '/cliente/metricas',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/agencia': typeof AuthenticatedAgenciaRoute
+  '/cliente/metricas': typeof AuthenticatedClienteMetricasRoute
+  '/cliente/': typeof AuthenticatedClienteIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/agencia': typeof AuthenticatedAgenciaRoute
+  '/cliente/metricas': typeof AuthenticatedClienteMetricasRoute
+  '/cliente': typeof AuthenticatedClienteIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
+  '/_authenticated/agencia': typeof AuthenticatedAgenciaRoute
+  '/_authenticated/cliente/metricas': typeof AuthenticatedClienteMetricasRoute
+  '/_authenticated/cliente/': typeof AuthenticatedClienteIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/agencia' | '/cliente/metricas' | '/cliente/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/agencia' | '/cliente/metricas' | '/cliente'
+  id:
+    | '__root__'
+    | '/'
+    | '/_authenticated'
+    | '/_authenticated/agencia'
+    | '/_authenticated/cliente/metricas'
+    | '/_authenticated/cliente/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
@@ -48,22 +90,56 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated': {
+      id: '/_authenticated'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AuthenticatedRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/agencia': {
+      id: '/_authenticated/agencia'
+      path: '/agencia'
+      fullPath: '/agencia'
+      preLoaderRoute: typeof AuthenticatedAgenciaRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/cliente/': {
+      id: '/_authenticated/cliente/'
+      path: '/cliente'
+      fullPath: '/cliente/'
+      preLoaderRoute: typeof AuthenticatedClienteIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/cliente/metricas': {
+      id: '/_authenticated/cliente/metricas'
+      path: '/cliente/metricas'
+      fullPath: '/cliente/metricas'
+      preLoaderRoute: typeof AuthenticatedClienteMetricasRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
   }
 }
 
+interface AuthenticatedRouteRouteChildren {
+  AuthenticatedAgenciaRoute: typeof AuthenticatedAgenciaRoute
+  AuthenticatedClienteMetricasRoute: typeof AuthenticatedClienteMetricasRoute
+  AuthenticatedClienteIndexRoute: typeof AuthenticatedClienteIndexRoute
+}
+
+const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedAgenciaRoute: AuthenticatedAgenciaRoute,
+  AuthenticatedClienteMetricasRoute: AuthenticatedClienteMetricasRoute,
+  AuthenticatedClienteIndexRoute: AuthenticatedClienteIndexRoute,
+}
+
+const AuthenticatedRouteRouteWithChildren =
+  AuthenticatedRouteRoute._addFileChildren(AuthenticatedRouteRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
