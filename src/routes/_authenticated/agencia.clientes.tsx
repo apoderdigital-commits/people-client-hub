@@ -114,7 +114,7 @@ function ListaContas() {
     setErro(null);
     const { error } = await supabase
       .from("profiles")
-      .update({ nome: conta.nome, role: conta.role, cliente_id: conta.cliente_id })
+      .update({ nome: conta.nome ?? "", role: conta.role, cliente_id: conta.cliente_id })
       .eq("id", conta.id);
     setSalvandoId(null);
     if (error) return setErro("Não foi possível salvar. Verifique suas permissões.");

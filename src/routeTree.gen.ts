@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthenticatedAgenciaIndexRouteImport } from './routes/_authenticated/agencia.index'
+import { Route as AuthenticatedAgenciaClientesRouteImport } from './routes/_authenticated/agencia.clientes'
 import { Route as AuthenticatedClienteIndexRouteImport } from './routes/_authenticated/cliente.index'
 import { Route as AuthenticatedClienteMetricasRouteImport } from './routes/_authenticated/cliente.metricas'
 
@@ -30,6 +31,12 @@ const AuthenticatedAgenciaIndexRoute =
     path: '/agencia/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedAgenciaClientesRoute =
+  AuthenticatedAgenciaClientesRouteImport.update({
+    id: '/agencia/clientes',
+    path: '/agencia/clientes',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedClienteIndexRoute =
   AuthenticatedClienteIndexRouteImport.update({
     id: '/cliente/',
@@ -45,12 +52,14 @@ const AuthenticatedClienteMetricasRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/agencia/clientes': typeof AuthenticatedAgenciaClientesRoute
   '/cliente/metricas': typeof AuthenticatedClienteMetricasRoute
   '/agencia/': typeof AuthenticatedAgenciaIndexRoute
   '/cliente/': typeof AuthenticatedClienteIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/agencia/clientes': typeof AuthenticatedAgenciaClientesRoute
   '/cliente/metricas': typeof AuthenticatedClienteMetricasRoute
   '/agencia': typeof AuthenticatedAgenciaIndexRoute
   '/cliente': typeof AuthenticatedClienteIndexRoute
@@ -59,19 +68,22 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
+  '/_authenticated/agencia/clientes': typeof AuthenticatedAgenciaClientesRoute
   '/_authenticated/cliente/metricas': typeof AuthenticatedClienteMetricasRoute
   '/_authenticated/agencia/': typeof AuthenticatedAgenciaIndexRoute
   '/_authenticated/cliente/': typeof AuthenticatedClienteIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/cliente/metricas' | '/agencia/' | '/cliente/'
+  fullPaths:
+    '/' | '/agencia/clientes' | '/cliente/metricas' | '/agencia/' | '/cliente/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/cliente/metricas' | '/agencia' | '/cliente'
+  to: '/' | '/agencia/clientes' | '/cliente/metricas' | '/agencia' | '/cliente'
   id:
     | '__root__'
     | '/'
     | '/_authenticated'
+    | '/_authenticated/agencia/clientes'
     | '/_authenticated/cliente/metricas'
     | '/_authenticated/agencia/'
     | '/_authenticated/cliente/'
@@ -105,6 +117,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAgenciaIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/agencia/clientes': {
+      id: '/_authenticated/agencia/clientes'
+      path: '/agencia/clientes'
+      fullPath: '/agencia/clientes'
+      preLoaderRoute: typeof AuthenticatedAgenciaClientesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/cliente/': {
       id: '/_authenticated/cliente/'
       path: '/cliente'
@@ -123,12 +142,14 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthenticatedRouteRouteChildren {
+  AuthenticatedAgenciaClientesRoute: typeof AuthenticatedAgenciaClientesRoute
   AuthenticatedClienteMetricasRoute: typeof AuthenticatedClienteMetricasRoute
   AuthenticatedAgenciaIndexRoute: typeof AuthenticatedAgenciaIndexRoute
   AuthenticatedClienteIndexRoute: typeof AuthenticatedClienteIndexRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedAgenciaClientesRoute: AuthenticatedAgenciaClientesRoute,
   AuthenticatedClienteMetricasRoute: AuthenticatedClienteMetricasRoute,
   AuthenticatedAgenciaIndexRoute: AuthenticatedAgenciaIndexRoute,
   AuthenticatedClienteIndexRoute: AuthenticatedClienteIndexRoute,
