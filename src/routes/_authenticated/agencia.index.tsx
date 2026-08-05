@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { BarChart3, FileText, Megaphone, Users } from "lucide-react";
+import { BarChart3, FileText, LayoutDashboard, Megaphone, Users } from "lucide-react";
 import { AppHeader } from "@/components/AppHeader";
 import { MenuCard } from "@/components/MenuCard";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
@@ -43,6 +43,15 @@ function AgenciaMenu() {
                 badge="Ativo"
                 to="/agencia/clientes"
               />
+              <MenuCard
+                titulo="Área do Cliente"
+                descricao="Abra o portal do cliente para ver o menu e o dashboard de métricas como o cliente vê."
+                icone={LayoutDashboard}
+                cor="indigo"
+                badge="Ativo"
+                to="/cliente"
+              />
+
               <MenuCard
                 comingSoon
                 titulo="Campanhas"

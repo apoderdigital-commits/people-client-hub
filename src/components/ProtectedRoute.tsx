@@ -28,8 +28,9 @@ export function ProtectedRoute({ role, children }: Props) {
       </div>
     );
   }
-  if (perfil.role !== role) {
-    return <Navigate to={perfil.role === "agencia" ? "/agencia" : "/cliente"} replace />;
+  // Agência tem acesso geral: pode ver a própria área e também a área do cliente.
+  if (perfil.role !== role && perfil.role !== "agencia") {
+    return <Navigate to="/cliente" replace />;
   }
 
   return <>{children(perfil)}</>;
