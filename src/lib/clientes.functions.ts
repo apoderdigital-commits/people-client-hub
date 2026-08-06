@@ -123,13 +123,15 @@ async function sincronizar(
   const { desde, ate } = periodo(dias);
 
   let insights: Awaited<ReturnType<typeof meta.buscarInsightsDiarios>>;
+  let porCampanha: Awaited<ReturnType<typeof meta.buscarInsightsPorCampanha>>;
+  let statusCampanhas: Record<string, string>;
   try {
-    insights = await meta.buscarInsightsDiarios({
-      adAccountId: conta,
-      token,
-      desde,
-      ate,
-    });
+    const janela = { adAccountId: conta, token, desde, ate };
+    [insights, porCampanha, statusCampanhas] = await Promise.all([
+      meta.buscarInsightsDiarios(janela),
+      meta.buscarInsightsPorCampanha(janela),
+      meta.buscarStatusCampanhas(conta, token),
+    ]);
   } catch (err) {
     const mensagem = err instanceof Error ? err.message : "Falha ao sincronizar.";
     await db
@@ -164,12 +166,41 @@ async function sincronizar(
     if (error) throw new Error(erroDoBanco(error, "Métricas obtidas, mas não foi possível gravá-las."));
   }
 
+  const linhasCampanha = porCampanha.map((dia) => ({
+    cliente_id: clienteId,
+    campanha_id: dia.campanhaId,
+    campanha_nome: dia.campanhaNome,
+    status: statusCampanhas[dia.campanhaId] ?? "",
+    data: dia.data,
+    investimento: dia.investimento,
+    impressoes: dia.impressoes,
+    cliques: dia.cliques,
+    acoes: dia.acoes,
+    leads: meta.contarAcao(dia.acoes, config?.acao_lead ?? null, meta.ACOES_LEAD_PADRAO),
+    conversoes: meta.contarAcao(
+      dia.acoes,
+      config?.acao_conversao ?? null,
+      meta.ACOES_CONVERSAO_PADRAO,
+    ),
+    atualizado_em: new Date().toISOString(),
+  }));
+
+  if (linhasCampanha.length > 0) {
+    const { error } = await db
+      .from("metricas_campanhas")
+      .upsert(linhasCampanha, { onConflict: "cliente_id,campanha_id,data" });
+    if (error) {
+      throw new Error(erroDoBanco(error, "Não foi possível gravar as métricas por campanha."));
+    }
+  }
+
   await db
     .from("clientes")
     .update({ ultima_sincronizacao: new Date().toISOString(), erro_sincronizacao: null })
     .eq("id", clienteId);
 
-  return { dias: linhas.length };
+  const campanhas = new Set(porCampanha.map((c) => c.campanhaId)).size;
+  return { dias: linhas.length, campanhas };
 }
 
 /**

@@ -19,12 +19,19 @@ export type InsightDiario = {
   acoes: Record<string, number>;
 };
 
+export type InsightCampanha = InsightDiario & {
+  campanhaId: string;
+  campanhaNome: string;
+};
+
 type LinhaInsight = {
   date_start?: string;
   spend?: string;
   impressions?: string;
   clicks?: string;
   actions?: { action_type?: string; value?: string }[];
+  campaign_id?: string;
+  campaign_name?: string;
 };
 
 type ErroMeta = { message?: string; type?: string; code?: number; error_subcode?: number };
@@ -109,17 +116,22 @@ export async function validarCredenciais(
  * Insights diários da conta, um registro por dia. `time_increment=1` faz a
  * Meta quebrar o período por dia em vez de somar tudo num único total.
  */
-export async function buscarInsightsDiarios(opts: {
-  adAccountId: string;
-  token: string;
-  desde: string;
-  ate: string;
-}): Promise<InsightDiario[]> {
+type Periodo = { adAccountId: string; token: string; desde: string; ate: string };
+
+async function coletarInsights(
+  opts: Periodo,
+  nivel: "account" | "campaign",
+): Promise<LinhaInsight[]> {
   const conta = normalizarConta(opts.adAccountId);
   const url = new URL(`${BASE}/${conta}/insights`);
-  url.searchParams.set("level", "account");
+  url.searchParams.set("level", nivel);
   url.searchParams.set("time_increment", "1");
-  url.searchParams.set("fields", "spend,impressions,clicks,actions");
+  url.searchParams.set(
+    "fields",
+    nivel === "campaign"
+      ? "spend,impressions,clicks,actions,campaign_id,campaign_name"
+      : "spend,impressions,clicks,actions",
+  );
   url.searchParams.set(
     "time_range",
     JSON.stringify({ since: opts.desde, until: opts.ate }),
@@ -136,21 +148,85 @@ export async function buscarInsightsDiarios(opts: {
     proxima = corpo.paging?.next;
   }
 
+  return linhas;
+}
+
+function converter(linha: LinhaInsight): InsightDiario {
+  const acoes: Record<string, number> = {};
+  for (const acao of linha.actions ?? []) {
+    if (acao.action_type) acoes[acao.action_type] = numero(acao.value);
+  }
+  return {
+    data: linha.date_start as string,
+    investimento: numero(linha.spend),
+    impressoes: numero(linha.impressions),
+    cliques: numero(linha.clicks),
+    acoes,
+  };
+}
+
+export async function buscarInsightsDiarios(opts: Periodo): Promise<InsightDiario[]> {
+  const linhas = await coletarInsights(opts, "account");
+  return linhas.filter((l) => Boolean(l.date_start)).map(converter);
+}
+
+/** Mesmos números, quebrados por campanha — base do filtro do dashboard. */
+export async function buscarInsightsPorCampanha(opts: Periodo): Promise<InsightCampanha[]> {
+  const linhas = await coletarInsights(opts, "campaign");
   return linhas
-    .filter((l) => Boolean(l.date_start))
-    .map((linha) => {
-      const acoes: Record<string, number> = {};
-      for (const acao of linha.actions ?? []) {
-        if (acao.action_type) acoes[acao.action_type] = numero(acao.value);
+    .filter((l) => Boolean(l.date_start) && Boolean(l.campaign_id))
+    .map((linha) => ({
+      ...converter(linha),
+      campanhaId: linha.campaign_id as string,
+      campanhaNome: linha.campaign_name ?? "",
+    }));
+}
+
+const STATUS_PT: Record<string, string> = {
+  ACTIVE: "Ativa",
+  PAUSED: "Pausada",
+  DELETED: "Excluída",
+  ARCHIVED: "Arquivada",
+  IN_PROCESS: "Em processamento",
+  WITH_ISSUES: "Com problemas",
+  CAMPAIGN_PAUSED: "Pausada",
+  ADSET_PAUSED: "Conjunto pausado",
+  PENDING_REVIEW: "Em revisão",
+  DISAPPROVED: "Reprovada",
+};
+
+/**
+ * Situação atual de cada campanha. Os insights não trazem status, então é uma
+ * chamada à parte; o resultado é indexado por id da campanha.
+ */
+export async function buscarStatusCampanhas(
+  adAccountId: string,
+  token: string,
+): Promise<Record<string, string>> {
+  const conta = normalizarConta(adAccountId);
+  const url = new URL(`${BASE}/${conta}/campaigns`);
+  url.searchParams.set("fields", "name,effective_status");
+  url.searchParams.set("limit", "500");
+  url.searchParams.set("access_token", token);
+
+  const status: Record<string, string> = {};
+  let proxima: string | undefined = url.toString();
+
+  for (let pagina = 0; proxima && pagina < MAX_PAGINAS; pagina++) {
+    const corpo: Resposta<{ id?: string; effective_status?: string }> = await pedir<{
+      id?: string;
+      effective_status?: string;
+    }>(proxima);
+    for (const campanha of corpo.data ?? []) {
+      if (campanha.id) {
+        const bruto = campanha.effective_status ?? "";
+        status[campanha.id] = STATUS_PT[bruto] ?? bruto;
       }
-      return {
-        data: linha.date_start as string,
-        investimento: numero(linha.spend),
-        impressoes: numero(linha.impressions),
-        cliques: numero(linha.clicks),
-        acoes,
-      };
-    });
+    }
+    proxima = corpo.paging?.next;
+  }
+
+  return status;
 }
 
 /**
