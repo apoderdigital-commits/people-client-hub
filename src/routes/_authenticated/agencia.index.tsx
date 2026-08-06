@@ -1,5 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { BarChart3, FileText, LayoutDashboard, Megaphone, ShieldCheck, Users } from "lucide-react";
+import {
+  BarChart3,
+  FileText,
+  LayoutDashboard,
+  LayoutGrid,
+  Megaphone,
+  ShieldCheck,
+  Users,
+} from "lucide-react";
 import { AppHeader } from "@/components/AppHeader";
 import { MenuCard } from "@/components/MenuCard";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
@@ -56,6 +64,16 @@ function AgenciaMenu() {
                   cor="indigo"
                   badge="Ativo"
                   to="/agencia/visualizar"
+                />
+              ) : null}
+              {podeVer(permissoes, "fluxo") ? (
+                <MenuCard
+                  titulo="Fluxo People"
+                  descricao="Quadro de produção do time: acompanhe cada peça da criação até a campanha no ar."
+                  icone={LayoutGrid}
+                  cor="amber"
+                  badge="Ativo"
+                  to="/agencia/fluxo"
                 />
               ) : null}
               {ehAdminEquipe(perfil.equipe_role) ? (

@@ -51,6 +51,7 @@ export const ABAS: { chave: string; label: string }[] = [
   { chave: "clientes", label: "Clientes" },
   { chave: "equipe", label: "Equipe" },
   { chave: "area_cliente", label: "Área do Cliente" },
+  { chave: "fluxo", label: "Fluxo People" },
   { chave: "metricas", label: "Métricas" },
   { chave: "campanhas", label: "Campanhas" },
   { chave: "relatorios", label: "Relatórios" },
