@@ -26,7 +26,9 @@ const senhaSchema = z.object({
 });
 
 /** Traduz os erros do Supabase Auth para mensagens em português. */
-function mensagemDeCriacao(error: { message?: string; code?: string } | null): string {
+function mensagemDeCriacao(
+  error: { message?: string | undefined; code?: string | undefined } | null,
+): string {
   const codigo = error?.code ?? "";
   const texto = error?.message ?? "";
   if (codigo === "email_exists" || /already (been )?registered|already exists/i.test(texto)) {
