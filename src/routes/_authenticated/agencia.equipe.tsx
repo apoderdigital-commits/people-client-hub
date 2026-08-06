@@ -91,12 +91,14 @@ function Lista({ perfil }: { perfil: Perfil }) {
   const [busca, setBusca] = useState("");
   const [salvandoId, setSalvandoId] = useState<string | null>(null);
   const [salvoId, setSalvoId] = useState<string | null>(null);
+  const [criado, setCriado] = useState<string | null>(null);
 
   useEffect(() => {
     let ativo = true;
     supabase
       .from("profiles")
       .select("id, nome, email, role, equipe_role, permissoes")
+      .eq("role", "agencia")
       .order("email")
       .then(({ data, error }) => {
         if (!ativo) return;
@@ -182,13 +184,22 @@ function Lista({ perfil }: { perfil: Perfil }) {
       <p className="mb-4 rounded-xl border border-border bg-card px-4 py-3 text-sm text-ink-muted">
         {perfil.equipe_role === "super_admin"
           ? "Como super admin você pode conceder qualquer nível de acesso, inclusive admin."
-          : "Como admin você pode conceder níveis de admin para baixo (gestor de tráfego, social media, gerente de projeto, designer e editor de vídeo)."}
+          : "Como admin você pode conceder níveis abaixo de admin (gestor de tráfego, social media, gerente de projeto, designer e editor de vídeo). Somente o super admin cria outros admins."}
       </p>
 
       <NovoAcesso
         niveis={niveisDisponiveis}
-        onCriado={(m) => setMembros((atual) => [...atual, m].sort((a, b) => a.email.localeCompare(b.email)))}
+        onCriado={(m) => {
+          setMembros((atual) => [...atual, m].sort((a, b) => a.email.localeCompare(b.email)));
+          setCriado(m.email);
+        }}
       />
+
+      {criado ? (
+        <p className="mb-4 rounded-xl border border-border bg-card px-4 py-3 text-sm text-success">
+          Acesso criado para {criado}. O integrante já pode entrar com o e-mail e a senha definidos.
+        </p>
+      ) : null}
 
       <div className="flex items-center gap-2 rounded-xl border border-input bg-card px-3 py-2">
 
@@ -215,7 +226,7 @@ function Lista({ perfil }: { perfil: Perfil }) {
               <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
                 <p className="truncate text-sm font-semibold text-ink">{membro.email}</p>
                 <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
-                  {membro.equipe_role ? rotuloNivel(membro.equipe_role) : membro.role}
+                  {membro.equipe_role ? rotuloNivel(membro.equipe_role) : "sem nível"}
                 </span>
               </div>
 
@@ -355,14 +366,12 @@ function NovoAcesso({
   const [permissoes, setPermissoes] = useState<Permissoes>(lerPermissoes(null));
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
-  const [ok, setOk] = useState(false);
 
   async function enviar(e: React.FormEvent) {
     e.preventDefault();
     if (!nivel) return setErro("Escolha um nível de acesso.");
     setEnviando(true);
     setErro(null);
-    setOk(false);
     try {
       const res = await criar({
         data: { nome, email, senha, equipe_role: nivel, permissoes },
@@ -375,12 +384,12 @@ function NovoAcesso({
         equipe_role: nivel,
         permissoes,
       });
-      setOk(true);
       setNome("");
       setEmail("");
       setSenha("");
       setNivel("");
       setPermissoes(lerPermissoes(null));
+      setAberto(false);
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Não foi possível criar o acesso.");
     }
@@ -482,7 +491,6 @@ function NovoAcesso({
       ) : null}
 
       {erro ? <p className="mt-4 text-sm text-destructive">{erro}</p> : null}
-      {ok ? <p className="mt-4 text-sm text-success">Acesso criado com sucesso.</p> : null}
 
       <div className="mt-5 flex items-center gap-3">
         <button

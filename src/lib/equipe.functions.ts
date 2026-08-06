@@ -25,6 +25,22 @@ const senhaSchema = z.object({
   senha: z.string().min(8).max(72),
 });
 
+/** Traduz os erros do Supabase Auth para mensagens em português. */
+function mensagemDeCriacao(error: { message?: string; code?: string } | null): string {
+  const codigo = error?.code ?? "";
+  const texto = error?.message ?? "";
+  if (codigo === "email_exists" || /already (been )?registered|already exists/i.test(texto)) {
+    return "Já existe uma conta com este e-mail.";
+  }
+  if (codigo === "weak_password") {
+    return "Senha muito fraca. Use ao menos 8 caracteres.";
+  }
+  if (codigo === "validation_failed" || /invalid email/i.test(texto)) {
+    return "E-mail inválido.";
+  }
+  return "Não foi possível criar o acesso.";
+}
+
 /** Confirma que quem chama é admin/super admin e devolve o nível dele. */
 async function nivelDoChamador(supabase: {
   from: (t: string) => {
@@ -59,10 +75,12 @@ export const criarAcessoEquipe = createServerFn({ method: "POST" })
       user_metadata: { nome: data.nome },
     });
     if (error || !criado.user) {
-      throw new Error(error?.message ?? "Não foi possível criar o acesso.");
+      throw new Error(mensagemDeCriacao(error));
     }
 
-    const { error: erroPerfil } = await supabaseAdmin
+    // `.select()` é obrigatório: sem ele um update que não atinge nenhuma linha
+    // devolve error = null e o acesso ficaria criado no Auth sem perfil válido.
+    const { data: perfil, error: erroPerfil } = await supabaseAdmin
       .from("profiles")
       .update({
         nome: data.nome,
@@ -72,8 +90,15 @@ export const criarAcessoEquipe = createServerFn({ method: "POST" })
         permissoes: data.permissoes,
         cliente_id: null,
       })
-      .eq("id", criado.user.id);
-    if (erroPerfil) throw new Error("Acesso criado, mas falhou ao salvar o perfil.");
+      .eq("id", criado.user.id)
+      .select("id")
+      .maybeSingle();
+
+    if (erroPerfil || !perfil) {
+      // Desfaz o usuário recém-criado para não deixar um acesso órfão no Auth.
+      await supabaseAdmin.auth.admin.deleteUser(criado.user.id);
+      throw new Error("Não foi possível salvar o perfil do integrante. Nenhum acesso foi criado.");
+    }
 
     return { id: criado.user.id };
   });
