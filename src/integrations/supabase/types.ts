@@ -16,42 +16,88 @@ export type Database = {
     Tables: {
       clientes: {
         Row: {
+          acao_conversao: string | null
+          acao_lead: string | null
           ad_account_id: string
           created_at: string
+          erro_sincronizacao: string | null
           id: string
           identificador: string
           investimento_mensal: number
           meta_faturamento: number
           meta_token: string
           nome: string
+          token_atualizado_em: string | null
+          ultima_sincronizacao: string | null
           updated_at: string
         }
         Insert: {
+          acao_conversao?: string | null
+          acao_lead?: string | null
           ad_account_id?: string
           created_at?: string
+          erro_sincronizacao?: string | null
           id?: string
           identificador: string
           investimento_mensal?: number
           meta_faturamento?: number
           meta_token?: string
           nome: string
+          token_atualizado_em?: string | null
+          ultima_sincronizacao?: string | null
           updated_at?: string
         }
         Update: {
+          acao_conversao?: string | null
+          acao_lead?: string | null
           ad_account_id?: string
           created_at?: string
+          erro_sincronizacao?: string | null
           id?: string
           identificador?: string
           investimento_mensal?: number
           meta_faturamento?: number
           meta_token?: string
           nome?: string
+          token_atualizado_em?: string | null
+          ultima_sincronizacao?: string | null
           updated_at?: string
         }
         Relationships: []
       }
+      clientes_secrets: {
+        Row: {
+          cliente_id: string
+          created_at: string
+          meta_token: string
+          updated_at: string
+        }
+        Insert: {
+          cliente_id: string
+          created_at?: string
+          meta_token?: string
+          updated_at?: string
+        }
+        Update: {
+          cliente_id?: string
+          created_at?: string
+          meta_token?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clientes_secrets_cliente_id_fkey"
+            columns: ["cliente_id"]
+            isOneToOne: true
+            referencedRelation: "clientes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       metricas_diarias: {
         Row: {
+          acoes: Json
+          atualizado_em: string
           cliente_id: string
           cliques: number
           conversoes: number
@@ -63,6 +109,8 @@ export type Database = {
           leads: number
         }
         Insert: {
+          acoes?: Json
+          atualizado_em?: string
           cliente_id: string
           cliques?: number
           conversoes?: number
@@ -74,6 +122,8 @@ export type Database = {
           leads?: number
         }
         Update: {
+          acoes?: Json
+          atualizado_em?: string
           cliente_id?: string
           cliques?: number
           conversoes?: number
@@ -120,7 +170,15 @@ export type Database = {
           permissoes?: Json
           role?: Database["public"]["Enums"]["app_role"]
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_cliente_id_fkey"
+            columns: ["cliente_id"]
+            isOneToOne: false
+            referencedRelation: "clientes"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
