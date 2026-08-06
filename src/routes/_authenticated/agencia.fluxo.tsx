@@ -72,8 +72,10 @@ function FluxoPagina() {
         return (
           <div className="min-h-screen bg-background">
             <AppHeader perfil={perfil} />
-            <main className="w-full px-4 py-8">
-              <div className="mx-auto w-full max-w-[1400px]">
+            {/* Sem container centralizado: o quadro precisa correr até a borda
+                direita, senão a área de rolagem fica menor que a tela. */}
+            <main className="w-full py-8">
+              <div className="pl-4 pr-4 sm:pl-6">
                 <Link
                   to="/agencia"
                   className="inline-flex items-center gap-1.5 text-sm font-medium text-ink-muted transition-colors hover:text-ink"
@@ -92,15 +94,15 @@ function FluxoPagina() {
                     </p>
                   </div>
                 </div>
-
-                {!podeVer(permissoes, "fluxo") ? (
-                  <p className="mt-7 rounded-2xl border border-border bg-card px-4 py-6 text-sm text-ink-muted shadow-card">
-                    Você não tem permissão para visualizar esta aba.
-                  </p>
-                ) : (
-                  <Quadro editavel={podeEditar(permissoes, "fluxo")} perfilId={perfil.id} />
-                )}
               </div>
+
+              {!podeVer(permissoes, "fluxo") ? (
+                <p className="mx-4 mt-7 rounded-2xl border border-border bg-card px-4 py-6 text-sm text-ink-muted shadow-card sm:mx-6">
+                  Você não tem permissão para visualizar esta aba.
+                </p>
+              ) : (
+                <Quadro editavel={podeEditar(permissoes, "fluxo")} perfilId={perfil.id} />
+              )}
             </main>
           </div>
         );
@@ -402,7 +404,7 @@ function Quadro({ editavel, perfilId }: { editavel: boolean; perfilId: string })
   return (
     <div className="mt-7">
       {erro ? (
-        <p className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-destructive/40 bg-destructive/5 px-4 py-2 text-sm text-destructive">
+        <p className="mx-4 mb-4 flex items-center justify-between gap-3 rounded-xl border border-destructive/40 bg-destructive/5 px-4 py-2 text-sm text-destructive sm:mx-6">
           {erro}
           <button type="button" onClick={() => setErro(null)} aria-label="Fechar aviso">
             <X className="size-4" />
@@ -411,12 +413,13 @@ function Quadro({ editavel, perfilId }: { editavel: boolean; perfilId: string })
       ) : null}
 
       {!editavel ? (
-        <p className="mb-4 rounded-xl border border-border bg-card px-4 py-3 text-sm text-ink-muted">
+        <p className="mx-4 mb-4 rounded-xl border border-border bg-card px-4 py-3 text-sm text-ink-muted sm:mx-6">
           Seu acesso a esta aba é somente de visualização.
         </p>
       ) : null}
 
-      <div className="flex gap-4 overflow-x-auto pb-4">
+      {/* pl na esquerda, nada na direita: as colunas seguem até a borda. */}
+      <div className="flex gap-4 overflow-x-auto pb-4 pl-4 sm:pl-6">
         {colunas.map((coluna, i) => (
           <ColunaKanban
             key={coluna.id}
@@ -545,9 +548,14 @@ function ColunaKanban({
     setNome(coluna.nome);
   }, [coluna.nome]);
 
-  function soltar(indice: number | null) {
-    if (!arrastando) return;
-    void onMoverCartao(arrastando, coluna.id, indice);
+  /**
+   * O id vem do próprio evento (`dataTransfer`), não do estado: é o canal que
+   * o HTML5 usa para carregar o que está sendo arrastado, e sem ele o Firefox
+   * sequer inicia o arrasto.
+   */
+  function soltar(id: string, indice: number | null) {
+    if (!id) return;
+    void onMoverCartao(id, coluna.id, indice);
     onArrastar(null);
     setSobre(false);
   }
@@ -558,15 +566,19 @@ function ColunaKanban({
         sobre ? "border-brand" : "border-border"
       }`}
       onDragOver={(e) => {
-        if (!editavel || !arrastando) return;
+        if (!editavel) return;
         e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
         setSobre(true);
       }}
-      onDragLeave={() => setSobre(false)}
+      onDragLeave={(e) => {
+        // Sair para um filho dispara dragleave na coluna; ignoramos esse caso.
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setSobre(false);
+      }}
       onDrop={(e) => {
         if (!editavel) return;
         e.preventDefault();
-        soltar(null);
+        soltar(e.dataTransfer.getData("text/plain"), null);
       }}
     >
       <div className="flex items-center gap-1">
@@ -637,9 +649,10 @@ function ColunaKanban({
               .map((v) => v.perfil_id)}
             contadores={contadores}
             editavel={editavel}
+            arrastando={arrastando}
             onArrastar={onArrastar}
             onAbrir={onAbrir}
-            onSoltarAntes={() => soltar(i)}
+            onSoltarAntes={(id) => soltar(id, i)}
           />
         ))}
       </div>
@@ -715,6 +728,7 @@ function MiniCartao({
   responsaveis,
   contadores,
   editavel,
+  arrastando,
   onArrastar,
   onAbrir,
   onSoltarAntes,
@@ -726,9 +740,10 @@ function MiniCartao({
   responsaveis: string[];
   contadores: Contadores;
   editavel: boolean;
+  arrastando: string | null;
   onArrastar: (id: string | null) => void;
   onAbrir: (id: string) => void;
-  onSoltarAntes: () => void;
+  onSoltarAntes: (id: string) => void;
 }) {
   const cliente = clientes.find((c) => c.id === cartao.cliente_id);
   const equipe = membros.filter((m) => responsaveis.includes(m.id));
@@ -744,20 +759,27 @@ function MiniCartao({
   return (
     <div
       draggable={editavel}
-      onDragStart={() => onArrastar(cartao.id)}
+      onDragStart={(e) => {
+        e.dataTransfer.setData("text/plain", cartao.id);
+        e.dataTransfer.effectAllowed = "move";
+        onArrastar(cartao.id);
+      }}
       onDragEnd={() => onArrastar(null)}
       onDragOver={(e) => {
         if (!editavel) return;
         e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
       }}
       onDrop={(e) => {
         if (!editavel) return;
         e.preventDefault();
         e.stopPropagation();
-        onSoltarAntes();
+        onSoltarAntes(e.dataTransfer.getData("text/plain"));
       }}
       onClick={() => onAbrir(cartao.id)}
-      className="cursor-pointer rounded-xl border border-border bg-background p-3 shadow-sm transition-shadow hover:shadow-card"
+      className={`cursor-pointer rounded-xl border border-border bg-background p-3 shadow-sm transition-shadow hover:shadow-card ${
+        arrastando === cartao.id ? "opacity-40" : ""
+      }`}
     >
       {etiquetas.length > 0 ? (
         <div className="mb-2 flex flex-wrap gap-1">
