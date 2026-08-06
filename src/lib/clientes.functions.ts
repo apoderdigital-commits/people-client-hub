@@ -39,6 +39,24 @@ async function admin(): Promise<SupabaseClient> {
   return supabaseAdmin as unknown as SupabaseClient;
 }
 
+/**
+ * Erros do PostgREST chegam com code/message/details. Engolir isso numa
+ * mensagem genérica torna qualquer diagnóstico impossível, então o texto real
+ * vai junto — estas telas só são acessíveis à equipe.
+ */
+function erroDoBanco(
+  error: { code?: string; message?: string; details?: string } | null,
+  padrao: string,
+): string {
+  if (!error) return padrao;
+  if (error.code === "23505") return "Já existe um cliente com esse identificador.";
+  if (error.code === "42703" || error.code === "42P01") {
+    return `A migração da integração com a Meta ainda não foi aplicada no banco (${error.message ?? error.code}).`;
+  }
+  const detalhe = [error.message, error.details].filter(Boolean).join(" — ");
+  return detalhe ? `${padrao} ${detalhe}` : padrao;
+}
+
 /** Só integrantes com permissão de edição na aba Clientes podem mexer aqui. */
 async function exigirEdicaoDeClientes(
   supabase: SupabaseClient,
@@ -143,7 +161,7 @@ async function sincronizar(
     const { error } = await db
       .from("metricas_diarias")
       .upsert(linhas, { onConflict: "cliente_id,data" });
-    if (error) throw new Error("Métricas obtidas, mas não foi possível gravá-las.");
+    if (error) throw new Error(erroDoBanco(error, "Métricas obtidas, mas não foi possível gravá-las."));
   }
 
   await db
@@ -187,11 +205,7 @@ export const criarClienteComMeta = createServerFn({ method: "POST" })
       .single();
 
     if (error || !criado) {
-      throw new Error(
-        (error as { code?: string } | null)?.code === "23505"
-          ? "Já existe um cliente com esse identificador."
-          : "Não foi possível criar o cliente.",
-      );
+      throw new Error(erroDoBanco(error, "Não foi possível criar o cliente."));
     }
 
     const clienteId = (criado as { id: string }).id;
@@ -204,7 +218,9 @@ export const criarClienteComMeta = createServerFn({ method: "POST" })
         { cliente_id: clienteId, meta_token: data.meta_token, updated_at: new Date().toISOString() },
         { onConflict: "cliente_id" },
       );
-    if (erroSegredo) throw new Error("Cliente criado, mas o token não pôde ser guardado.");
+    if (erroSegredo) {
+      throw new Error(erroDoBanco(erroSegredo, "Cliente criado, mas o token não pôde ser guardado."));
+    }
 
     // O cliente já existe; uma falha aqui não deve desfazer o cadastro. Ela
     // fica registrada em erro_sincronizacao e o botão Sincronizar resolve.
@@ -231,7 +247,7 @@ export const salvarTokenMeta = createServerFn({ method: "POST" })
       { cliente_id: data.clienteId, meta_token: data.meta_token, updated_at: new Date().toISOString() },
       { onConflict: "cliente_id" },
     );
-    if (error) throw new Error("Não foi possível guardar o token.");
+    if (error) throw new Error(erroDoBanco(error, "Não foi possível guardar o token."));
 
     await db
       .from("clientes")
