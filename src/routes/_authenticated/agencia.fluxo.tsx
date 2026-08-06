@@ -565,6 +565,10 @@ function ColunaKanban({
       className={`flex w-72 shrink-0 flex-col rounded-2xl border bg-card p-3 transition-colors ${
         sobre ? "border-brand" : "border-border"
       }`}
+      onDragEnter={(e) => {
+        if (!editavel) return;
+        e.preventDefault();
+      }}
       onDragOver={(e) => {
         if (!editavel) return;
         e.preventDefault();
@@ -762,7 +766,9 @@ function MiniCartao({
       onDragStart={(e) => {
         e.dataTransfer.setData("text/plain", cartao.id);
         e.dataTransfer.effectAllowed = "move";
-        onArrastar(cartao.id);
+        // Adiado de propósito: mudar estado dentro do dragstart re-renderiza o
+        // quadro no instante em que o arrasto começa, e o navegador o cancela.
+        setTimeout(() => onArrastar(cartao.id), 0);
       }}
       onDragEnd={() => onArrastar(null)}
       onDragOver={(e) => {
@@ -777,7 +783,9 @@ function MiniCartao({
         onSoltarAntes(e.dataTransfer.getData("text/plain"));
       }}
       onClick={() => onAbrir(cartao.id)}
-      className={`cursor-pointer rounded-xl border border-border bg-background p-3 shadow-sm transition-shadow hover:shadow-card ${
+      // select-none: sem isso o navegador inicia uma seleção de texto em vez do
+      // arrasto, e o clique acaba apenas abrindo o cartão.
+      className={`cursor-grab select-none rounded-xl border border-border bg-background p-3 shadow-sm transition-shadow hover:shadow-card active:cursor-grabbing ${
         arrastando === cartao.id ? "opacity-40" : ""
       }`}
     >
