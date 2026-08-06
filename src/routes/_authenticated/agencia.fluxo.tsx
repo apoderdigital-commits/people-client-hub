@@ -3,11 +3,13 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   ArrowLeft,
   CalendarDays,
-  Check,
+  CheckSquare,
   ChevronLeft,
   ChevronRight,
   LayoutGrid,
   Loader2,
+  MessageSquare,
+  Paperclip,
   Plus,
   Trash2,
   X,
@@ -15,8 +17,23 @@ import {
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { AppHeader } from "@/components/AppHeader";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { FluxoCartao } from "@/components/FluxoCartao";
 import { supabase } from "@/integrations/supabase/client";
 import { permissoesEfetivas, podeEditar, podeVer } from "@/lib/equipe";
+import {
+  classeDaCor,
+  dataCurta,
+  hojeISO,
+  iniciais,
+  COLUNAS_CARTAO,
+  type Cartao,
+  type CartaoEtiqueta,
+  type ClienteRef,
+  type Coluna,
+  type Etiqueta,
+  type Membro,
+  type Vinculo,
+} from "@/lib/fluxo";
 
 export const Route = createFileRoute("/_authenticated/agencia/fluxo")({
   ssr: false,
@@ -41,30 +58,11 @@ export const Route = createFileRoute("/_authenticated/agencia/fluxo")({
 /** types.ts é gerado pelo Lovable e ainda não conhece as tabelas do fluxo. */
 const db = supabase as unknown as SupabaseClient;
 
-type Coluna = { id: string; nome: string; ordem: number };
-type Cartao = {
-  id: string;
-  coluna_id: string;
-  titulo: string;
-  cliente_id: string | null;
-  prazo: string | null;
-  ordem: number;
+type Contadores = {
+  checklist: Map<string, { feitos: number; total: number }>;
+  comentarios: Map<string, number>;
+  anexos: Map<string, number>;
 };
-type Vinculo = { cartao_id: string; perfil_id: string };
-type Membro = { id: string; nome: string | null; email: string };
-type ClienteRef = { id: string; nome: string };
-
-function iniciais(texto: string): string {
-  const limpo = texto.trim();
-  if (!limpo) return "?";
-  const partes = limpo.split(/\s+/);
-  if (partes.length === 1) return partes[0].slice(0, 2).toUpperCase();
-  return (partes[0][0] + partes[partes.length - 1][0]).toUpperCase();
-}
-
-function hojeISO(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 function FluxoPagina() {
   return (
@@ -100,7 +98,7 @@ function FluxoPagina() {
                     Você não tem permissão para visualizar esta aba.
                   </p>
                 ) : (
-                  <Quadro editavel={podeEditar(permissoes, "fluxo")} />
+                  <Quadro editavel={podeEditar(permissoes, "fluxo")} perfilId={perfil.id} />
                 )}
               </div>
             </main>
@@ -111,37 +109,77 @@ function FluxoPagina() {
   );
 }
 
-function Quadro({ editavel }: { editavel: boolean }) {
+function Quadro({ editavel, perfilId }: { editavel: boolean; perfilId: string }) {
   const [colunas, setColunas] = useState<Coluna[]>([]);
   const [cartoes, setCartoes] = useState<Cartao[]>([]);
   const [vinculos, setVinculos] = useState<Vinculo[]>([]);
   const [membros, setMembros] = useState<Membro[]>([]);
   const [clientes, setClientes] = useState<ClienteRef[]>([]);
+  const [etiquetas, setEtiquetas] = useState<Etiqueta[]>([]);
+  const [cartaoEtiquetas, setCartaoEtiquetas] = useState<CartaoEtiqueta[]>([]);
+  const [contadores, setContadores] = useState<Contadores>({
+    checklist: new Map(),
+    comentarios: new Map(),
+    anexos: new Map(),
+  });
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [arrastando, setArrastando] = useState<string | null>(null);
   const [novaColuna, setNovaColuna] = useState("");
+  const [abertoId, setAbertoId] = useState<string | null>(null);
+
+  const carregarContadores = useCallback(async () => {
+    const [ck, cm, ax] = await Promise.all([
+      db.from("fluxo_checklist").select("cartao_id, feito"),
+      db.from("fluxo_comentarios").select("cartao_id"),
+      db.from("fluxo_anexos").select("cartao_id"),
+    ]);
+
+    const checklist = new Map<string, { feitos: number; total: number }>();
+    for (const item of (ck.data as { cartao_id: string; feito: boolean }[]) ?? []) {
+      const atual = checklist.get(item.cartao_id) ?? { feitos: 0, total: 0 };
+      atual.total += 1;
+      if (item.feito) atual.feitos += 1;
+      checklist.set(item.cartao_id, atual);
+    }
+
+    const contar = (linhas: { cartao_id: string }[] | null) => {
+      const mapa = new Map<string, number>();
+      for (const l of linhas ?? []) mapa.set(l.cartao_id, (mapa.get(l.cartao_id) ?? 0) + 1);
+      return mapa;
+    };
+
+    setContadores({
+      checklist,
+      comentarios: contar(cm.data as { cartao_id: string }[] | null),
+      anexos: contar(ax.data as { cartao_id: string }[] | null),
+    });
+  }, []);
 
   const carregar = useCallback(async () => {
-    const [c, k, v, m, cl] = await Promise.all([
+    const [c, k, v, m, cl, et, ce] = await Promise.all([
       db.from("fluxo_colunas").select("id, nome, ordem").order("ordem"),
-      db.from("fluxo_cartoes").select("id, coluna_id, titulo, cliente_id, prazo, ordem").order("ordem"),
+      db.from("fluxo_cartoes").select(COLUNAS_CARTAO).order("ordem"),
       db.from("fluxo_responsaveis").select("cartao_id, perfil_id"),
       db.from("profiles").select("id, nome, email").eq("role", "agencia").order("nome"),
       db.from("clientes").select("id, nome").order("nome"),
+      db.from("fluxo_etiquetas").select("id, nome, cor").order("nome"),
+      db.from("fluxo_cartao_etiquetas").select("cartao_id, etiqueta_id"),
     ]);
 
-    const falha = c.error ?? k.error ?? v.error ?? m.error ?? cl.error;
-    if (falha) setErro(falha.message);
-    else setErro(null);
+    const falha = c.error ?? k.error ?? v.error ?? m.error ?? cl.error ?? et.error ?? ce.error;
+    setErro(falha ? falha.message : null);
 
     setColunas((c.data as Coluna[]) ?? []);
     setCartoes((k.data as Cartao[]) ?? []);
     setVinculos((v.data as Vinculo[]) ?? []);
     setMembros((m.data as Membro[]) ?? []);
     setClientes((cl.data as ClienteRef[]) ?? []);
+    setEtiquetas((et.data as Etiqueta[]) ?? []);
+    setCartaoEtiquetas((ce.data as CartaoEtiqueta[]) ?? []);
+    await carregarContadores();
     setCarregando(false);
-  }, []);
+  }, [carregarContadores]);
 
   useEffect(() => {
     void carregar();
@@ -163,11 +201,10 @@ function Quadro({ editavel }: { editavel: boolean }) {
   async function criarColuna() {
     const nome = novaColuna.trim();
     if (!nome) return;
-    const ordem = colunas.length;
     setNovaColuna("");
     const { data, error } = await db
       .from("fluxo_colunas")
-      .insert({ nome, ordem })
+      .insert({ nome, ordem: colunas.length })
       .select("id, nome, ordem")
       .single();
     if (error) return setErro("Não foi possível criar a coluna.");
@@ -181,8 +218,7 @@ function Quadro({ editavel }: { editavel: boolean }) {
   }
 
   async function removerColuna(id: string) {
-    const cartoesDaColuna = porColuna.get(id) ?? [];
-    if (cartoesDaColuna.length > 0) {
+    if ((porColuna.get(id) ?? []).length > 0) {
       return setErro("Mova ou exclua os cartões antes de remover a coluna.");
     }
     setColunas((atual) => atual.filter((c) => c.id !== id));
@@ -202,20 +238,19 @@ function Quadro({ editavel }: { editavel: boolean }) {
     const reordenadas = nova.map((c, idx) => ({ ...c, ordem: idx }));
     setColunas(reordenadas);
     await Promise.all(
-      reordenadas
-        .filter((c, idx) => colunas[idx]?.id !== c.id)
-        .map((c) => db.from("fluxo_colunas").update({ ordem: c.ordem }).eq("id", c.id)),
+      [reordenadas[i], reordenadas[j]].map((c) =>
+        db.from("fluxo_colunas").update({ ordem: c.ordem }).eq("id", c.id),
+      ),
     );
   }
 
   // --- cartões ---
 
   async function criarCartao(colunaId: string, titulo: string) {
-    const ordem = (porColuna.get(colunaId) ?? []).length;
     const { data, error } = await db
       .from("fluxo_cartoes")
-      .insert({ coluna_id: colunaId, titulo, ordem })
-      .select("id, coluna_id, titulo, cliente_id, prazo, ordem")
+      .insert({ coluna_id: colunaId, titulo, ordem: (porColuna.get(colunaId) ?? []).length })
+      .select(COLUNAS_CARTAO)
       .single();
     if (error) return setErro("Não foi possível criar o cartão.");
     setCartoes((atual) => [...atual, data as Cartao]);
@@ -228,6 +263,7 @@ function Quadro({ editavel }: { editavel: boolean }) {
   }
 
   async function removerCartao(id: string) {
+    setAbertoId(null);
     setCartoes((atual) => atual.filter((c) => c.id !== id));
     setVinculos((atual) => atual.filter((v) => v.cartao_id !== id));
     const { error } = await db.from("fluxo_cartoes").delete().eq("id", id);
@@ -248,22 +284,20 @@ function Quadro({ editavel }: { editavel: boolean }) {
 
     const origem = (porColuna.get(cartao.coluna_id) ?? []).filter((c) => c.id !== cartaoId);
     const destino =
-      cartao.coluna_id === colunaDestino
-        ? origem
-        : [...(porColuna.get(colunaDestino) ?? [])];
+      cartao.coluna_id === colunaDestino ? origem : [...(porColuna.get(colunaDestino) ?? [])];
 
     const posicao = indice === null || indice > destino.length ? destino.length : indice;
     destino.splice(posicao, 0, { ...cartao, coluna_id: colunaDestino });
 
-    const atualizacoes: Cartao[] = [];
+    const atualizacoes: { id: string; coluna_id: string; ordem: number }[] = [];
     destino.forEach((c, idx) => {
       if (c.coluna_id !== colunaDestino || c.ordem !== idx) {
-        atualizacoes.push({ ...c, coluna_id: colunaDestino, ordem: idx });
+        atualizacoes.push({ id: c.id, coluna_id: colunaDestino, ordem: idx });
       }
     });
     if (cartao.coluna_id !== colunaDestino) {
       origem.forEach((c, idx) => {
-        if (c.ordem !== idx) atualizacoes.push({ ...c, ordem: idx });
+        if (c.ordem !== idx) atualizacoes.push({ id: c.id, coluna_id: c.coluna_id, ordem: idx });
       });
     }
 
@@ -274,18 +308,13 @@ function Quadro({ editavel }: { editavel: boolean }) {
       }),
     );
 
-    const { error } = await db.from("fluxo_cartoes").upsert(
-      atualizacoes.map((c) => ({
-        id: c.id,
-        coluna_id: c.coluna_id,
-        titulo: c.titulo,
-        cliente_id: c.cliente_id,
-        prazo: c.prazo,
-        ordem: c.ordem,
-      })),
-      { onConflict: "id" },
+    // Um update por linha: o upsert exigiria repetir todas as colunas NOT NULL.
+    const resultados = await Promise.all(
+      atualizacoes.map((a) =>
+        db.from("fluxo_cartoes").update({ coluna_id: a.coluna_id, ordem: a.ordem }).eq("id", a.id),
+      ),
     );
-    if (error) {
+    if (resultados.some((r) => r.error)) {
       setErro("Não foi possível mover o cartão.");
       void carregar();
     }
@@ -317,6 +346,49 @@ function Quadro({ editavel }: { editavel: boolean }) {
     }
   }
 
+  async function definirEtiquetas(cartaoId: string, ids: string[]) {
+    const atuais = cartaoEtiquetas
+      .filter((v) => v.cartao_id === cartaoId)
+      .map((v) => v.etiqueta_id);
+    const adicionar = ids.filter((id) => !atuais.includes(id));
+    const remover = atuais.filter((id) => !ids.includes(id));
+
+    setCartaoEtiquetas((atual) => [
+      ...atual.filter((v) => v.cartao_id !== cartaoId),
+      ...ids.map((etiqueta_id) => ({ cartao_id: cartaoId, etiqueta_id })),
+    ]);
+
+    if (adicionar.length > 0) {
+      const { error } = await db
+        .from("fluxo_cartao_etiquetas")
+        .insert(adicionar.map((etiqueta_id) => ({ cartao_id: cartaoId, etiqueta_id })));
+      if (error) setErro("Não foi possível aplicar a etiqueta.");
+    }
+    if (remover.length > 0) {
+      const { error } = await db
+        .from("fluxo_cartao_etiquetas")
+        .delete()
+        .eq("cartao_id", cartaoId)
+        .in("etiqueta_id", remover);
+      if (error) setErro("Não foi possível remover a etiqueta.");
+    }
+  }
+
+  async function criarEtiqueta(nome: string, cor: string): Promise<Etiqueta | null> {
+    const { data, error } = await db
+      .from("fluxo_etiquetas")
+      .insert({ nome, cor })
+      .select("id, nome, cor")
+      .single();
+    if (error) {
+      setErro("Não foi possível criar a etiqueta.");
+      return null;
+    }
+    const nova = data as Etiqueta;
+    setEtiquetas((atual) => [...atual, nova].sort((a, b) => a.nome.localeCompare(b.nome)));
+    return nova;
+  }
+
   if (carregando) {
     return (
       <div className="mt-10 grid place-items-center py-10">
@@ -324,6 +396,8 @@ function Quadro({ editavel }: { editavel: boolean }) {
       </div>
     );
   }
+
+  const aberto = cartoes.find((c) => c.id === abertoId) ?? null;
 
   return (
     <div className="mt-7">
@@ -352,19 +426,19 @@ function Quadro({ editavel }: { editavel: boolean }) {
             cartoes={porColuna.get(coluna.id) ?? []}
             membros={membros}
             clientes={clientes}
+            etiquetas={etiquetas}
+            cartaoEtiquetas={cartaoEtiquetas}
             vinculos={vinculos}
+            contadores={contadores}
             editavel={editavel}
             arrastando={arrastando}
             onArrastar={setArrastando}
+            onAbrir={setAbertoId}
             onCriarCartao={criarCartao}
-            onAtualizarCartao={atualizarCartao}
-            onRemoverCartao={removerCartao}
             onMoverCartao={moverCartao}
-            onDefinirResponsaveis={definirResponsaveis}
             onRenomear={renomearColuna}
             onRemover={removerColuna}
             onMoverColuna={moverColuna}
-            colunas={colunas}
           />
         ))}
 
@@ -393,47 +467,71 @@ function Quadro({ editavel }: { editavel: boolean }) {
           </div>
         ) : null}
       </div>
+
+      {aberto ? (
+        <FluxoCartao
+          cartao={aberto}
+          colunas={colunas}
+          membros={membros}
+          clientes={clientes}
+          etiquetas={etiquetas}
+          responsaveis={vinculos.filter((v) => v.cartao_id === aberto.id).map((v) => v.perfil_id)}
+          etiquetasDoCartao={cartaoEtiquetas
+            .filter((v) => v.cartao_id === aberto.id)
+            .map((v) => v.etiqueta_id)}
+          perfilId={perfilId}
+          editavel={editavel}
+          onFechar={() => setAbertoId(null)}
+          onAtualizar={atualizarCartao}
+          onRemover={removerCartao}
+          onMover={moverCartao}
+          onDefinirResponsaveis={definirResponsaveis}
+          onDefinirEtiquetas={definirEtiquetas}
+          onCriarEtiqueta={criarEtiqueta}
+          onContadores={() => void carregarContadores()}
+        />
+      ) : null}
     </div>
   );
 }
 
 function ColunaKanban({
   coluna,
-  colunas,
   primeira,
   ultima,
   cartoes,
   membros,
   clientes,
+  etiquetas,
+  cartaoEtiquetas,
   vinculos,
+  contadores,
   editavel,
   arrastando,
   onArrastar,
+  onAbrir,
   onCriarCartao,
-  onAtualizarCartao,
-  onRemoverCartao,
   onMoverCartao,
-  onDefinirResponsaveis,
   onRenomear,
   onRemover,
   onMoverColuna,
 }: {
   coluna: Coluna;
-  colunas: Coluna[];
   primeira: boolean;
   ultima: boolean;
   cartoes: Cartao[];
   membros: Membro[];
   clientes: ClienteRef[];
+  etiquetas: Etiqueta[];
+  cartaoEtiquetas: CartaoEtiqueta[];
   vinculos: Vinculo[];
+  contadores: Contadores;
   editavel: boolean;
   arrastando: string | null;
   onArrastar: (id: string | null) => void;
+  onAbrir: (id: string) => void;
   onCriarCartao: (colunaId: string, titulo: string) => Promise<void>;
-  onAtualizarCartao: (id: string, campos: Partial<Cartao>) => Promise<void>;
-  onRemoverCartao: (id: string) => Promise<void>;
   onMoverCartao: (id: string, colunaDestino: string, indice: number | null) => Promise<void>;
-  onDefinirResponsaveis: (cartaoId: string, ids: string[]) => Promise<void>;
   onRenomear: (id: string, nome: string) => Promise<void>;
   onRemover: (id: string) => Promise<void>;
   onMoverColuna: (id: string, direcao: -1 | 1) => Promise<void>;
@@ -526,22 +624,22 @@ function ColunaKanban({
 
       <div className="mt-2 flex min-h-[40px] flex-col gap-2">
         {cartoes.map((cartao, i) => (
-          <CartaoKanban
+          <MiniCartao
             key={cartao.id}
             cartao={cartao}
-            colunas={colunas}
             membros={membros}
             clientes={clientes}
+            etiquetas={etiquetas.filter((e) =>
+              cartaoEtiquetas.some((v) => v.cartao_id === cartao.id && v.etiqueta_id === e.id),
+            )}
             responsaveis={vinculos
               .filter((v) => v.cartao_id === cartao.id)
               .map((v) => v.perfil_id)}
+            contadores={contadores}
             editavel={editavel}
             onArrastar={onArrastar}
+            onAbrir={onAbrir}
             onSoltarAntes={() => soltar(i)}
-            onAtualizar={onAtualizarCartao}
-            onRemover={onRemoverCartao}
-            onMover={onMoverCartao}
-            onDefinirResponsaveis={onDefinirResponsaveis}
           />
         ))}
       </div>
@@ -609,46 +707,39 @@ function ColunaKanban({
   );
 }
 
-function CartaoKanban({
+function MiniCartao({
   cartao,
-  colunas,
   membros,
   clientes,
+  etiquetas,
   responsaveis,
+  contadores,
   editavel,
   onArrastar,
+  onAbrir,
   onSoltarAntes,
-  onAtualizar,
-  onRemover,
-  onMover,
-  onDefinirResponsaveis,
 }: {
   cartao: Cartao;
-  colunas: Coluna[];
   membros: Membro[];
   clientes: ClienteRef[];
+  etiquetas: Etiqueta[];
   responsaveis: string[];
+  contadores: Contadores;
   editavel: boolean;
   onArrastar: (id: string | null) => void;
+  onAbrir: (id: string) => void;
   onSoltarAntes: () => void;
-  onAtualizar: (id: string, campos: Partial<Cartao>) => Promise<void>;
-  onRemover: (id: string) => Promise<void>;
-  onMover: (id: string, colunaDestino: string, indice: number | null) => Promise<void>;
-  onDefinirResponsaveis: (cartaoId: string, ids: string[]) => Promise<void>;
 }) {
-  const [aberto, setAberto] = useState(false);
-  const [titulo, setTitulo] = useState(cartao.titulo);
-
-  useEffect(() => {
-    setTitulo(cartao.titulo);
-  }, [cartao.titulo]);
-
   const cliente = clientes.find((c) => c.id === cartao.cliente_id);
   const equipe = membros.filter((m) => responsaveis.includes(m.id));
+  const check = contadores.checklist.get(cartao.id);
+  const comentarios = contadores.comentarios.get(cartao.id) ?? 0;
+  const anexos = contadores.anexos.get(cartao.id) ?? 0;
 
   const hoje = hojeISO();
-  const atrasado = Boolean(cartao.prazo && cartao.prazo < hoje);
-  const hojeMesmo = cartao.prazo === hoje;
+  const data = cartao.entrega_arte ?? cartao.prazo;
+  const atrasado = Boolean(data && data < hoje);
+  const hojeMesmo = data === hoje;
 
   return (
     <div
@@ -665,15 +756,22 @@ function CartaoKanban({
         e.stopPropagation();
         onSoltarAntes();
       }}
-      className="rounded-xl border border-border bg-background p-3 shadow-sm transition-shadow hover:shadow-card"
+      onClick={() => onAbrir(cartao.id)}
+      className="cursor-pointer rounded-xl border border-border bg-background p-3 shadow-sm transition-shadow hover:shadow-card"
     >
-      <button
-        type="button"
-        onClick={() => setAberto((v) => !v)}
-        className="block w-full text-left text-sm font-medium text-ink"
-      >
-        {cartao.titulo}
-      </button>
+      {etiquetas.length > 0 ? (
+        <div className="mb-2 flex flex-wrap gap-1">
+          {etiquetas.map((e) => (
+            <span
+              key={e.id}
+              title={e.nome}
+              className={`h-2 w-10 rounded-full ${classeDaCor(e.cor)}`}
+            />
+          ))}
+        </div>
+      ) : null}
+
+      <p className="text-sm font-medium text-ink">{cartao.titulo}</p>
 
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         {cliente ? (
@@ -681,7 +779,7 @@ function CartaoKanban({
             {cliente.nome}
           </span>
         ) : null}
-        {cartao.prazo ? (
+        {data ? (
           <span
             className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
               atrasado
@@ -692,10 +790,29 @@ function CartaoKanban({
             }`}
           >
             <CalendarDays className="size-3" />
-            {new Date(`${cartao.prazo}T12:00:00`).toLocaleDateString("pt-BR", {
-              day: "2-digit",
-              month: "2-digit",
-            })}
+            {dataCurta(data)}
+          </span>
+        ) : null}
+        {check && check.total > 0 ? (
+          <span
+            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+              check.feitos === check.total ? "bg-success/10 text-success" : "bg-muted text-ink-muted"
+            }`}
+          >
+            <CheckSquare className="size-3" />
+            {check.feitos}/{check.total}
+          </span>
+        ) : null}
+        {comentarios > 0 ? (
+          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-ink-muted">
+            <MessageSquare className="size-3" />
+            {comentarios}
+          </span>
+        ) : null}
+        {anexos > 0 ? (
+          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-ink-muted">
+            <Paperclip className="size-3" />
+            {anexos}
           </span>
         ) : null}
         {equipe.length > 0 ? (
@@ -717,133 +834,6 @@ function CartaoKanban({
           </span>
         ) : null}
       </div>
-
-      {aberto ? (
-        <div className="mt-3 border-t border-border pt-3">
-          {editavel ? (
-            <>
-              <label className="block">
-                <span className="text-[11px] font-medium text-ink-muted">Título</span>
-                <textarea
-                  value={titulo}
-                  onChange={(e) => setTitulo(e.target.value)}
-                  onBlur={() => {
-                    const limpo = titulo.trim();
-                    if (limpo && limpo !== cartao.titulo) void onAtualizar(cartao.id, { titulo: limpo });
-                    else setTitulo(cartao.titulo);
-                  }}
-                  rows={2}
-                  className="mt-1 w-full resize-none rounded-lg border border-input bg-background px-2 py-1.5 text-sm text-ink outline-none focus:border-brand"
-                />
-              </label>
-
-              <label className="mt-2 block">
-                <span className="text-[11px] font-medium text-ink-muted">Cliente</span>
-                <select
-                  value={cartao.cliente_id ?? ""}
-                  onChange={(e) =>
-                    void onAtualizar(cartao.id, { cliente_id: e.target.value || null })
-                  }
-                  className="mt-1 w-full rounded-lg border border-input bg-background px-2 py-1.5 text-sm text-ink outline-none focus:border-brand"
-                >
-                  <option value="">Sem cliente</option>
-                  {clientes.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.nome}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="mt-2 block">
-                <span className="text-[11px] font-medium text-ink-muted">Prazo</span>
-                <input
-                  type="date"
-                  value={cartao.prazo ?? ""}
-                  onChange={(e) => void onAtualizar(cartao.id, { prazo: e.target.value || null })}
-                  className="mt-1 w-full rounded-lg border border-input bg-background px-2 py-1.5 text-sm text-ink outline-none focus:border-brand"
-                />
-              </label>
-
-              <div className="mt-2">
-                <span className="text-[11px] font-medium text-ink-muted">Responsáveis</span>
-                <div className="mt-1 max-h-32 overflow-y-auto rounded-lg border border-input">
-                  {membros.map((m) => {
-                    const marcado = responsaveis.includes(m.id);
-                    return (
-                      <button
-                        key={m.id}
-                        type="button"
-                        onClick={() =>
-                          void onDefinirResponsaveis(
-                            cartao.id,
-                            marcado
-                              ? responsaveis.filter((id) => id !== m.id)
-                              : [...responsaveis, m.id],
-                          )
-                        }
-                        className="flex w-full items-center gap-2 px-2 py-1.5 text-left transition-colors hover:bg-muted"
-                      >
-                        <span
-                          className={
-                            marcado
-                              ? "grid size-4 shrink-0 place-items-center rounded border border-brand bg-brand"
-                              : "grid size-4 shrink-0 place-items-center rounded border border-input"
-                          }
-                        >
-                          {marcado ? <Check className="size-3 text-brand-foreground" /> : null}
-                        </span>
-                        <span className="min-w-0 flex-1 truncate text-xs text-ink">
-                          {m.nome || m.email}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <label className="mt-2 block">
-                <span className="text-[11px] font-medium text-ink-muted">Mover para</span>
-                <select
-                  value={cartao.coluna_id}
-                  onChange={(e) => void onMover(cartao.id, e.target.value, null)}
-                  className="mt-1 w-full rounded-lg border border-input bg-background px-2 py-1.5 text-sm text-ink outline-none focus:border-brand"
-                >
-                  {colunas.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.nome}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <div className="mt-3 flex items-center justify-between">
-                <button
-                  type="button"
-                  onClick={() => setAberto(false)}
-                  className="text-xs font-medium text-ink-muted hover:text-ink"
-                >
-                  Fechar
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void onRemover(cartao.id)}
-                  className="inline-flex items-center gap-1 text-xs font-medium text-ink-muted transition-colors hover:text-destructive"
-                >
-                  <Trash2 className="size-3.5" />
-                  Excluir
-                </button>
-              </div>
-            </>
-          ) : (
-            <p className="text-xs text-ink-muted">
-              {equipe.length > 0
-                ? `Responsáveis: ${equipe.map((m) => m.nome || m.email).join(", ")}`
-                : "Sem responsáveis."}
-            </p>
-          )}
-        </div>
-      ) : null}
     </div>
   );
 }
