@@ -1,19 +1,22 @@
 /**
- * Períodos e agregação do dashboard de métricas.
+ * Períodos, catálogo de métricas e agregação do dashboard.
  *
  * As linhas vêm de `metricas_campanhas` — um registro por campanha por dia.
  * Somar todas as campanhas dá o total da conta, então o dashboard trabalha
  * sempre sobre a mesma fonte, com ou sem filtro.
  */
 
-export type PeriodoId = "hoje" | "7d" | "30d" | "mes";
+export type PeriodoId = "hoje" | "7d" | "30d" | "mes" | "personalizado";
 
 export const PERIODOS: { id: PeriodoId; label: string }[] = [
   { id: "hoje", label: "Hoje" },
   { id: "7d", label: "7 dias" },
   { id: "30d", label: "30 dias" },
   { id: "mes", label: "Mês atual" },
+  { id: "personalizado", label: "Personalizado" },
 ];
+
+export type Janela = { desde: string; ate: string };
 
 export type LinhaCampanha = {
   campanha_id: string;
@@ -25,66 +28,191 @@ export type LinhaCampanha = {
   cliques: number;
   leads: number;
   conversoes: number;
+  acoes: Record<string, number> | null;
 };
 
 function iso(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-function diasDoPeriodo(periodo: PeriodoId): number {
-  if (periodo === "hoje") return 1;
-  if (periodo === "7d") return 7;
-  if (periodo === "30d") return 30;
-  const hoje = new Date();
-  return hoje.getDate();
+function somarDias(base: Date, dias: number): Date {
+  const d = new Date(base);
+  d.setDate(base.getDate() + dias);
+  return d;
 }
 
-/** Janela do período selecionado, inclusiva nas duas pontas. */
-export function intervalo(periodo: PeriodoId): { desde: string; ate: string } {
+/**
+ * Janela do período. Os presets de 7 e 30 dias terminam **ontem**, seguindo a
+ * convenção do Gerenciador de Anúncios: o dia corrente ainda está incompleto e
+ * incluí-lo faz os números divergirem do que a Meta mostra.
+ */
+export function intervalo(periodo: PeriodoId, personalizado?: Janela): Janela {
   const hoje = new Date();
-  const desde = new Date(hoje);
-  desde.setDate(hoje.getDate() - (diasDoPeriodo(periodo) - 1));
-  return { desde: iso(desde), ate: iso(hoje) };
+  const ontem = somarDias(hoje, -1);
+
+  if (periodo === "personalizado") {
+    return personalizado ?? { desde: iso(somarDias(hoje, -29)), ate: iso(ontem) };
+  }
+  if (periodo === "hoje") return { desde: iso(hoje), ate: iso(hoje) };
+  if (periodo === "7d") return { desde: iso(somarDias(ontem, -6)), ate: iso(ontem) };
+  if (periodo === "30d") return { desde: iso(somarDias(ontem, -29)), ate: iso(ontem) };
+
+  const primeiro = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+  return { desde: iso(primeiro), ate: iso(hoje) };
 }
 
 /** Janela de mesmo tamanho imediatamente anterior, para a variação percentual. */
-export function intervaloAnterior(periodo: PeriodoId): { desde: string; ate: string } {
-  const dias = diasDoPeriodo(periodo);
-  const hoje = new Date();
-  const ate = new Date(hoje);
-  ate.setDate(hoje.getDate() - dias);
-  const desde = new Date(ate);
-  desde.setDate(ate.getDate() - (dias - 1));
-  return { desde: iso(desde), ate: iso(ate) };
+export function janelaAnterior(janela: Janela): Janela {
+  const desde = new Date(`${janela.desde}T12:00:00`);
+  const ate = new Date(`${janela.ate}T12:00:00`);
+  const dias = Math.round((ate.getTime() - desde.getTime()) / 86_400_000) + 1;
+  const novoAte = somarDias(desde, -1);
+  return { desde: iso(somarDias(novoAte, -(dias - 1))), ate: iso(novoAte) };
 }
 
-export type Totais = {
-  investimento: number;
-  impressoes: number;
-  cliques: number;
-  leads: number;
-  conversoes: number;
-  ctr: number;
-  cpc: number;
-  cpl: number;
-};
+// --- ações da Meta ---
 
-export function totais(linhas: LinhaCampanha[]): Totais {
-  const t = linhas.reduce(
-    (acc, d) => ({
-      investimento: acc.investimento + d.investimento,
-      impressoes: acc.impressoes + d.impressoes,
-      cliques: acc.cliques + d.cliques,
-      leads: acc.leads + d.leads,
-      conversoes: acc.conversoes + d.conversoes,
-    }),
-    { investimento: 0, impressoes: 0, cliques: 0, leads: 0, conversoes: 0 },
-  );
+/**
+ * Tipos de ação que costumam representar um lead, em ordem de preferência.
+ * Usados apenas enquanto o cliente não tem `acao_lead` configurada. Como
+ * `metricas_campanhas.acoes` guarda todos os tipos, trocar a escolha recalcula
+ * na hora, sem puxar nada da Meta de novo.
+ */
+export const ACOES_LEAD_PADRAO = [
+  "onsite_conversion.lead_grouped",
+  "leadgen_grouped",
+  "lead",
+  "offsite_conversion.fb_pixel_lead",
+  "onsite_conversion.messaging_conversation_started_7d",
+] as const;
+
+export const ACOES_CONVERSAO_PADRAO = [
+  "offsite_conversion.fb_pixel_purchase",
+  "purchase",
+  "omni_purchase",
+] as const;
+
+export function contarAcao(
+  acoes: Record<string, number> | null | undefined,
+  configurada: string | null,
+  padroes: readonly string[],
+): number {
+  if (!acoes) return 0;
+  if (configurada) return acoes[configurada] ?? 0;
+  for (const tipo of padroes) {
+    if (acoes[tipo] !== undefined) return acoes[tipo];
+  }
+  return 0;
+}
+
+/** Tipos de ação presentes nos dados, para montar o seletor de configuração. */
+export function tiposDeAcao(
+  linhas: { acoes: Record<string, number> | null }[],
+): { tipo: string; total: number }[] {
+  const mapa = new Map<string, number>();
+  for (const linha of linhas) {
+    for (const [tipo, valor] of Object.entries(linha.acoes ?? {})) {
+      mapa.set(tipo, (mapa.get(tipo) ?? 0) + valor);
+    }
+  }
+  return [...mapa.entries()]
+    .map(([tipo, total]) => ({ tipo, total }))
+    .sort((a, b) => b.total - a.total);
+}
+
+// --- catálogo de métricas ---
+
+export type MetricaId =
+  | "investimento"
+  | "impressoes"
+  | "cliques"
+  | "ctr"
+  | "cpc"
+  | "cpm"
+  | "leads"
+  | "cpl"
+  | "conversoes"
+  | "taxa_conversao";
+
+export const METRICAS: {
+  id: MetricaId;
+  label: string;
+  formato: "brl" | "num" | "pct";
+  /** true quando aumentar é ruim (custos). */
+  inverso?: boolean;
+}[] = [
+  { id: "investimento", label: "Investimento", formato: "brl" },
+  { id: "impressoes", label: "Impressões", formato: "num" },
+  { id: "cliques", label: "Cliques", formato: "num" },
+  { id: "ctr", label: "CTR", formato: "pct" },
+  { id: "cpc", label: "CPC", formato: "brl", inverso: true },
+  { id: "cpm", label: "CPM", formato: "brl", inverso: true },
+  { id: "leads", label: "Leads", formato: "num" },
+  { id: "cpl", label: "CPL", formato: "brl", inverso: true },
+  { id: "conversoes", label: "Conversões", formato: "num" },
+  { id: "taxa_conversao", label: "Taxa de conversão", formato: "pct" },
+];
+
+export const METRICAS_PADRAO: MetricaId[] = [
+  "investimento",
+  "impressoes",
+  "cliques",
+  "ctr",
+  "cpc",
+  "leads",
+  "cpl",
+  "conversoes",
+];
+
+export function ehMetricaValida(valor: unknown): valor is MetricaId {
+  return typeof valor === "string" && METRICAS.some((m) => m.id === valor);
+}
+
+/** Normaliza o que veio do banco, caindo no padrão quando estiver vazio. */
+export function lerMetricasConfig(valor: unknown): MetricaId[] {
+  if (!Array.isArray(valor)) return METRICAS_PADRAO;
+  const ids = valor.filter(ehMetricaValida);
+  return ids.length > 0 ? ids : METRICAS_PADRAO;
+}
+
+// --- agregação ---
+
+export type Totais = Record<MetricaId, number>;
+
+export function totais(
+  linhas: LinhaCampanha[],
+  acaoLead: string | null,
+  acaoConversao: string | null,
+): Totais {
+  let investimento = 0;
+  let impressoes = 0;
+  let cliques = 0;
+  let leads = 0;
+  let conversoes = 0;
+
+  for (const linha of linhas) {
+    investimento += linha.investimento;
+    impressoes += linha.impressoes;
+    cliques += linha.cliques;
+    leads += linha.acoes
+      ? contarAcao(linha.acoes, acaoLead, ACOES_LEAD_PADRAO)
+      : linha.leads;
+    conversoes += linha.acoes
+      ? contarAcao(linha.acoes, acaoConversao, ACOES_CONVERSAO_PADRAO)
+      : linha.conversoes;
+  }
+
   return {
-    ...t,
-    ctr: t.impressoes ? (t.cliques / t.impressoes) * 100 : 0,
-    cpc: t.cliques ? t.investimento / t.cliques : 0,
-    cpl: t.leads ? t.investimento / t.leads : 0,
+    investimento,
+    impressoes,
+    cliques,
+    leads,
+    conversoes,
+    ctr: impressoes ? (cliques / impressoes) * 100 : 0,
+    cpc: cliques ? investimento / cliques : 0,
+    cpm: impressoes ? (investimento / impressoes) * 1000 : 0,
+    cpl: leads ? investimento / leads : 0,
+    taxa_conversao: cliques ? (leads / cliques) * 100 : 0,
   };
 }
 
@@ -111,11 +239,16 @@ export function campanhasDe(linhas: LinhaCampanha[]): Campanha[] {
 }
 
 /** Série diária somada, pronta para o gráfico. */
-export function porDia(linhas: LinhaCampanha[]): { data: string; leads: number; investimento: number }[] {
+export function porDia(
+  linhas: LinhaCampanha[],
+  acaoLead: string | null,
+): { data: string; leads: number; investimento: number }[] {
   const mapa = new Map<string, { leads: number; investimento: number }>();
   for (const linha of linhas) {
     const atual = mapa.get(linha.data) ?? { leads: 0, investimento: 0 };
-    atual.leads += linha.leads;
+    atual.leads += linha.acoes
+      ? contarAcao(linha.acoes, acaoLead, ACOES_LEAD_PADRAO)
+      : linha.leads;
     atual.investimento += linha.investimento;
     mapa.set(linha.data, atual);
   }
@@ -127,8 +260,12 @@ export function porDia(linhas: LinhaCampanha[]): { data: string; leads: number; 
 /** Totais por campanha, para a tabela. */
 export function porCampanha(
   linhas: LinhaCampanha[],
+  acaoLead: string | null,
 ): { id: string; nome: string; status: string; investimento: number; leads: number }[] {
-  const mapa = new Map<string, { nome: string; status: string; investimento: number; leads: number }>();
+  const mapa = new Map<
+    string,
+    { nome: string; status: string; investimento: number; leads: number }
+  >();
   for (const linha of linhas) {
     const atual = mapa.get(linha.campanha_id) ?? {
       nome: linha.campanha_nome || linha.campanha_id,
@@ -137,7 +274,9 @@ export function porCampanha(
       leads: 0,
     };
     atual.investimento += linha.investimento;
-    atual.leads += linha.leads;
+    atual.leads += linha.acoes
+      ? contarAcao(linha.acoes, acaoLead, ACOES_LEAD_PADRAO)
+      : linha.leads;
     mapa.set(linha.campanha_id, atual);
   }
   return [...mapa.entries()]

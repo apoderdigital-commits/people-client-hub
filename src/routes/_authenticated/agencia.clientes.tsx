@@ -2,16 +2,36 @@ import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { AlertTriangle, Check, KeyRound, Loader2, Plus, RefreshCw, Search, Users } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowDown,
+  ArrowUp,
+  Check,
+  KeyRound,
+  Loader2,
+  Plus,
+  RefreshCw,
+  Search,
+  SlidersHorizontal,
+  Users,
+} from "lucide-react";
 import { AppHeader } from "@/components/AppHeader";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { permissoesEfetivas, podeEditar, podeVer } from "@/lib/equipe";
 import { supabase } from "@/integrations/supabase/client";
 import {
   criarClienteComMeta,
+  salvarConfigMetricas,
   salvarTokenMeta,
   sincronizarMetricasMeta,
 } from "@/lib/clientes.functions";
+import {
+  intervalo,
+  lerMetricasConfig,
+  tiposDeAcao,
+  METRICAS,
+  type MetricaId,
+} from "@/lib/metricas";
 
 export const Route = createFileRoute("/_authenticated/agencia/clientes")({
   ssr: false,
@@ -50,10 +70,13 @@ type Cliente = {
   token_atualizado_em: string | null;
   ultima_sincronizacao: string | null;
   erro_sincronizacao: string | null;
+  metricas_kpis: unknown;
+  acao_lead: string | null;
+  acao_conversao: string | null;
 };
 
 const COLUNAS =
-  "id, nome, identificador, ad_account_id, investimento_mensal, meta_faturamento, token_atualizado_em, ultima_sincronizacao, erro_sincronizacao";
+  "id, nome, identificador, ad_account_id, investimento_mensal, meta_faturamento, token_atualizado_em, ultima_sincronizacao, erro_sincronizacao, metricas_kpis, acao_lead, acao_conversao";
 
 /** types.ts é gerado pelo Lovable e ainda não conhece as colunas novas. */
 const db = supabase as unknown as SupabaseClient;
@@ -270,6 +293,9 @@ function Painel() {
             token_atualizado_em: temMeta ? agora : null,
             ultima_sincronizacao: res.sincronizado > 0 ? agora : null,
             erro_sincronizacao: null,
+            metricas_kpis: null,
+            acao_lead: null,
+            acao_conversao: null,
           },
         ].sort((a, b) => a.nome.localeCompare(b.nome)),
       );
@@ -468,10 +494,261 @@ function Painel() {
                 cliente={cliente}
                 onAtualizar={(mudancas) => atualizarNaLista(cliente.id, mudancas)}
               />
+
+              <ConfigMetricas
+                cliente={cliente}
+                onAtualizar={(mudancas) => atualizarNaLista(cliente.id, mudancas)}
+              />
             </div>
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Escolhe quais indicadores o dashboard mostra, em que ordem, e qual ação da
+ * Meta conta como lead e como conversão. Os tipos de ação oferecidos são os que
+ * realmente aparecem nos dados já importados — é assim que se descobre qual
+ * deles bate com o número que o Gerenciador de Anúncios exibe.
+ */
+function ConfigMetricas({
+  cliente,
+  onAtualizar,
+}: {
+  cliente: Cliente;
+  onAtualizar: (mudancas: Partial<Cliente>) => void;
+}) {
+  const salvarConfig = useServerFn(salvarConfigMetricas);
+  const [aberto, setAberto] = useState(false);
+  const [escolhidas, setEscolhidas] = useState<MetricaId[]>(() =>
+    lerMetricasConfig(cliente.metricas_kpis),
+  );
+  const [acaoLead, setAcaoLead] = useState(cliente.acao_lead ?? "");
+  const [acaoConversao, setAcaoConversao] = useState(cliente.acao_conversao ?? "");
+  const [acoes, setAcoes] = useState<{ tipo: string; total: number }[]>([]);
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [ok, setOk] = useState(false);
+
+  useEffect(() => {
+    if (!aberto) return;
+    const janela = intervalo("30d");
+    let ativo = true;
+    db.from("metricas_campanhas")
+      .select("acoes")
+      .eq("cliente_id", cliente.id)
+      .gte("data", janela.desde)
+      .lte("data", janela.ate)
+      .then(({ data }) => {
+        if (!ativo) return;
+        setAcoes(tiposDeAcao((data as { acoes: Record<string, number> | null }[]) ?? []));
+      });
+    return () => {
+      ativo = false;
+    };
+  }, [aberto, cliente.id]);
+
+  function alternar(id: MetricaId) {
+    setEscolhidas((atual) =>
+      atual.includes(id) ? atual.filter((x) => x !== id) : [...atual, id],
+    );
+    setOk(false);
+  }
+
+  function mover(id: MetricaId, direcao: -1 | 1) {
+    setEscolhidas((atual) => {
+      const i = atual.indexOf(id);
+      const j = i + direcao;
+      if (i < 0 || j < 0 || j >= atual.length) return atual;
+      const nova = [...atual];
+      [nova[i], nova[j]] = [nova[j], nova[i]];
+      return nova;
+    });
+    setOk(false);
+  }
+
+  async function salvar() {
+    setSalvando(true);
+    setErro(null);
+    setOk(false);
+    try {
+      await salvarConfig({
+        data: {
+          clienteId: cliente.id,
+          metricas: escolhidas,
+          acao_lead: acaoLead || null,
+          acao_conversao: acaoConversao || null,
+        },
+      });
+      onAtualizar({
+        metricas_kpis: escolhidas,
+        acao_lead: acaoLead || null,
+        acao_conversao: acaoConversao || null,
+      });
+      setOk(true);
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Não foi possível salvar.");
+    }
+    setSalvando(false);
+  }
+
+  const naoEscolhidas = METRICAS.filter((m) => !escolhidas.includes(m.id));
+
+  return (
+    <div className="mt-4 border-t border-border pt-4">
+      <button
+        type="button"
+        onClick={() => setAberto((v) => !v)}
+        className="inline-flex items-center gap-2 rounded-xl border border-input px-4 py-2 text-sm font-semibold text-ink transition-colors hover:border-brand"
+      >
+        <SlidersHorizontal className="size-4" />
+        Configurar métricas
+      </button>
+
+      {aberto ? (
+        <div className="mt-4 rounded-xl border border-border bg-background p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+            Indicadores do dashboard
+          </p>
+          <p className="mt-1 text-xs text-ink-muted">
+            A ordem aqui é a ordem dos cards na tela do cliente.
+          </p>
+
+          <div className="mt-3 flex flex-col gap-1.5">
+            {escolhidas.map((id, i) => {
+              const meta = METRICAS.find((m) => m.id === id);
+              if (!meta) return null;
+              return (
+                <div
+                  key={id}
+                  className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2"
+                >
+                  <span className="w-5 shrink-0 text-xs font-semibold text-ink-muted">{i + 1}</span>
+                  <span className="min-w-0 flex-1 truncate text-sm text-ink">{meta.label}</span>
+                  <button
+                    type="button"
+                    onClick={() => mover(id, -1)}
+                    disabled={i === 0}
+                    className="rounded p-1 text-ink-muted transition-colors hover:text-ink disabled:opacity-30"
+                    aria-label={`Subir ${meta.label}`}
+                  >
+                    <ArrowUp className="size-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => mover(id, 1)}
+                    disabled={i === escolhidas.length - 1}
+                    className="rounded p-1 text-ink-muted transition-colors hover:text-ink disabled:opacity-30"
+                    aria-label={`Descer ${meta.label}`}
+                  >
+                    <ArrowDown className="size-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => alternar(id)}
+                    className="rounded px-2 py-0.5 text-xs font-medium text-ink-muted transition-colors hover:text-destructive"
+                  >
+                    Remover
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+
+          {naoEscolhidas.length > 0 ? (
+            <div className="mt-3">
+              <p className="text-xs font-medium text-ink-muted">Disponíveis</p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {naoEscolhidas.map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => alternar(m.id)}
+                    className="rounded-full border border-input px-3 py-1 text-xs font-medium text-ink-muted transition-colors hover:border-brand hover:text-ink"
+                  >
+                    + {m.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          <p className="mt-5 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+            O que conta como lead e conversão
+          </p>
+          <p className="mt-1 text-xs text-ink-muted">
+            Os totais são dos últimos 30 dias já importados — escolha o que bate com o número do
+            Gerenciador de Anúncios.
+          </p>
+
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className="text-xs font-medium text-ink-muted">Ação de lead</span>
+              <select
+                value={acaoLead}
+                onChange={(e) => {
+                  setAcaoLead(e.target.value);
+                  setOk(false);
+                }}
+                className="mt-1 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm text-ink outline-none focus:border-brand"
+              >
+                <option value="">Detectar automaticamente</option>
+                {acoes.map((a) => (
+                  <option key={a.tipo} value={a.tipo}>
+                    {a.tipo} ({a.total})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="text-xs font-medium text-ink-muted">Ação de conversão</span>
+              <select
+                value={acaoConversao}
+                onChange={(e) => {
+                  setAcaoConversao(e.target.value);
+                  setOk(false);
+                }}
+                className="mt-1 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm text-ink outline-none focus:border-brand"
+              >
+                <option value="">Detectar automaticamente</option>
+                {acoes.map((a) => (
+                  <option key={a.tipo} value={a.tipo}>
+                    {a.tipo} ({a.total})
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          {acoes.length === 0 ? (
+            <p className="mt-2 text-xs text-ink-muted">
+              Nenhuma ação encontrada nos dados. Sincronize primeiro para poder escolher.
+            </p>
+          ) : null}
+
+          <div className="mt-4 flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => void salvar()}
+              disabled={salvando || escolhidas.length === 0}
+              className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-brand-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+            >
+              {salvando ? <Loader2 className="size-4 animate-spin" /> : null}
+              Salvar configuração
+            </button>
+            {ok ? (
+              <span className="inline-flex items-center gap-1 text-sm text-success">
+                <Check className="size-4" />
+                Salvo
+              </span>
+            ) : null}
+          </div>
+
+          {erro ? <p className="mt-2 text-sm text-destructive">{erro}</p> : null}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -523,7 +800,10 @@ function Meta({
     setErro(null);
     setOk(null);
     try {
-      const res = await sincronizar({ data: { clienteId: cliente.id, dias: 30 } });
+      const janela = intervalo("30d");
+      const res = await sincronizar({
+        data: { clienteId: cliente.id, desde: janela.desde, ate: janela.ate },
+      });
       onAtualizar({
         ultima_sincronizacao: new Date().toISOString(),
         erro_sincronizacao: null,

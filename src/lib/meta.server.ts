@@ -229,34 +229,6 @@ export async function buscarStatusCampanhas(
   return status;
 }
 
-/**
- * Tipos de ação que costumam representar um lead, em ordem de preferência.
- * Usados apenas quando o cliente ainda não tem `acao_lead` configurada — a
- * lista completa fica gravada em `metricas_diarias.acoes`, então trocar a
- * escolha depois não exige puxar o histórico de novo.
- */
-export const ACOES_LEAD_PADRAO = [
-  "onsite_conversion.messaging_conversation_started_7d",
-  "offsite_conversion.fb_pixel_lead",
-  "leadgen_grouped",
-  "lead",
-] as const;
-
-export const ACOES_CONVERSAO_PADRAO = [
-  "offsite_conversion.fb_pixel_purchase",
-  "purchase",
-  "omni_purchase",
-] as const;
-
-/** Resolve quantos leads houve num dia, respeitando a configuração do cliente. */
-export function contarAcao(
-  acoes: Record<string, number>,
-  configurada: string | null,
-  padroes: readonly string[],
-): number {
-  if (configurada) return acoes[configurada] ?? 0;
-  for (const tipo of padroes) {
-    if (acoes[tipo] !== undefined) return acoes[tipo];
-  }
-  return 0;
-}
+// A escolha de qual ação conta como lead vive em `@/lib/metricas`, junto do
+// dashboard: como `acoes` guarda todos os tipos, ela é aplicada na leitura e
+// trocá-la não exige puxar o histórico de novo.

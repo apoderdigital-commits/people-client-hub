@@ -3,6 +3,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { permissoesEfetivas, podeEditar, type EquipeRole } from "@/lib/equipe";
+import {
+  ACOES_CONVERSAO_PADRAO,
+  ACOES_LEAD_PADRAO,
+  contarAcao,
+  ehMetricaValida,
+} from "@/lib/metricas";
 
 const clienteSchema = z.object({
   nome: z.string().trim().min(1).max(160),
@@ -24,9 +30,21 @@ const tokenSchema = z.object({
   meta_token: z.string().trim().min(1).max(500),
 });
 
-const sincronizarSchema = z.object({
+const dataISO = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data inválida.");
+
+const sincronizarSchema = z
+  .object({
+    clienteId: z.string().uuid(),
+    desde: dataISO,
+    ate: dataISO,
+  })
+  .refine((v) => v.desde <= v.ate, { message: "A data inicial deve vir antes da final." });
+
+const configSchema = z.object({
   clienteId: z.string().uuid(),
-  dias: z.number().int().min(1).max(180).default(30),
+  metricas: z.array(z.string()).max(20),
+  acao_lead: z.string().max(120).nullable(),
+  acao_conversao: z.string().max(120).nullable(),
 });
 
 /**
@@ -83,11 +101,17 @@ async function exigirEdicaoDeClientes(
   }
 }
 
-function periodo(dias: number): { desde: string; ate: string } {
-  const ate = new Date();
-  const desde = new Date(ate);
-  desde.setDate(ate.getDate() - (dias - 1));
+/**
+ * Janela padrão da primeira carga: 30 dias terminando ontem, como o
+ * Gerenciador de Anúncios. O dia corrente está incompleto e incluí-lo faz os
+ * números divergirem do que a Meta mostra.
+ */
+function janelaPadrao(): { desde: string; ate: string } {
   const iso = (d: Date) => d.toISOString().slice(0, 10);
+  const ate = new Date();
+  ate.setDate(ate.getDate() - 1);
+  const desde = new Date(ate);
+  desde.setDate(ate.getDate() - 29);
   return { desde: iso(desde), ate: iso(ate) };
 }
 
@@ -99,8 +123,8 @@ function periodo(dias: number): { desde: string; ate: string } {
 async function sincronizar(
   db: SupabaseClient,
   clienteId: string,
-  dias: number,
-): Promise<{ dias: number }> {
+  janela: { desde: string; ate: string },
+): Promise<{ dias: number; campanhas: number }> {
   const { data: cliente } = await db
     .from("clientes")
     .select("ad_account_id, acao_lead, acao_conversao")
@@ -120,7 +144,7 @@ async function sincronizar(
   if (!token) throw new Error("Cliente sem token da Meta configurado.");
 
   const meta = await import("@/lib/meta.server");
-  const { desde, ate } = periodo(dias);
+  const { desde, ate } = janela;
 
   let insights: Awaited<ReturnType<typeof meta.buscarInsightsDiarios>>;
   let porCampanha: Awaited<ReturnType<typeof meta.buscarInsightsPorCampanha>>;
@@ -150,12 +174,8 @@ async function sincronizar(
     impressoes: dia.impressoes,
     cliques: dia.cliques,
     acoes: dia.acoes,
-    leads: meta.contarAcao(dia.acoes, config?.acao_lead ?? null, meta.ACOES_LEAD_PADRAO),
-    conversoes: meta.contarAcao(
-      dia.acoes,
-      config?.acao_conversao ?? null,
-      meta.ACOES_CONVERSAO_PADRAO,
-    ),
+    leads: contarAcao(dia.acoes, config?.acao_lead ?? null, ACOES_LEAD_PADRAO),
+    conversoes: contarAcao(dia.acoes, config?.acao_conversao ?? null, ACOES_CONVERSAO_PADRAO),
     atualizado_em: new Date().toISOString(),
   }));
 
@@ -176,12 +196,8 @@ async function sincronizar(
     impressoes: dia.impressoes,
     cliques: dia.cliques,
     acoes: dia.acoes,
-    leads: meta.contarAcao(dia.acoes, config?.acao_lead ?? null, meta.ACOES_LEAD_PADRAO),
-    conversoes: meta.contarAcao(
-      dia.acoes,
-      config?.acao_conversao ?? null,
-      meta.ACOES_CONVERSAO_PADRAO,
-    ),
+    leads: contarAcao(dia.acoes, config?.acao_lead ?? null, ACOES_LEAD_PADRAO),
+    conversoes: contarAcao(dia.acoes, config?.acao_conversao ?? null, ACOES_CONVERSAO_PADRAO),
     atualizado_em: new Date().toISOString(),
   }));
 
@@ -256,7 +272,7 @@ export const criarClienteComMeta = createServerFn({ method: "POST" })
     // O cliente já existe; uma falha aqui não deve desfazer o cadastro. Ela
     // fica registrada em erro_sincronizacao e o botão Sincronizar resolve.
     try {
-      const { dias } = await sincronizar(db, clienteId, 30);
+      const { dias } = await sincronizar(db, clienteId, janelaPadrao());
       return { id: clienteId, sincronizado: dias };
     } catch {
       return { id: clienteId, sincronizado: 0 };
@@ -292,12 +308,39 @@ export const salvarTokenMeta = createServerFn({ method: "POST" })
     return { conta: conta.nome };
   });
 
-/** Puxa novamente as métricas de um cliente já configurado. */
+/** Puxa novamente as métricas de um cliente, na janela informada. */
 export const sincronizarMetricasMeta = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => sincronizarSchema.parse(data))
   .handler(async ({ data, context }) => {
     await exigirEdicaoDeClientes(context.supabase as unknown as SupabaseClient, context.userId);
     const db = await admin();
-    return await sincronizar(db, data.clienteId, data.dias);
+    return await sincronizar(db, data.clienteId, { desde: data.desde, ate: data.ate });
+  });
+
+/**
+ * Quais métricas o dashboard mostra, em que ordem, e qual ação da Meta conta
+ * como lead e como conversão. Aplicado na leitura, então vale imediatamente
+ * para todo o histórico já importado.
+ */
+export const salvarConfigMetricas = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => configSchema.parse(data))
+  .handler(async ({ data, context }) => {
+    await exigirEdicaoDeClientes(context.supabase as unknown as SupabaseClient, context.userId);
+    const db = await admin();
+
+    const metricas = data.metricas.filter(ehMetricaValida);
+
+    const { error } = await db
+      .from("clientes")
+      .update({
+        metricas_kpis: metricas,
+        acao_lead: data.acao_lead || null,
+        acao_conversao: data.acao_conversao || null,
+      })
+      .eq("id", data.clienteId);
+
+    if (error) throw new Error(erroDoBanco(error, "Não foi possível salvar a configuração."));
+    return { metricas };
   });

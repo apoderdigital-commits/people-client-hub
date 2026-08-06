@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Check, ChevronDown, ChevronLeft, Loader2 } from "lucide-react";
+import { useServerFn } from "@tanstack/react-start";
+import { Check, ChevronDown, ChevronLeft, Loader2, RefreshCw } from "lucide-react";
 import {
   CartesianGrid,
   Line,
@@ -18,17 +19,22 @@ import { VisaoClienteBanner, VisaoClienteGate } from "@/components/VisaoCliente"
 import { supabase } from "@/integrations/supabase/client";
 import type { Perfil } from "@/hooks/use-auth";
 import { useClienteSelecionado } from "@/lib/visao-cliente";
+import { sincronizarMetricasMeta } from "@/lib/clientes.functions";
 import {
   campanhasDe,
   intervalo,
-  intervaloAnterior,
+  janelaAnterior,
+  lerMetricasConfig,
   porCampanha,
   porDia,
   totais,
   variacao,
+  METRICAS,
   PERIODOS,
   type Campanha,
+  type Janela,
   type LinhaCampanha,
+  type MetricaId,
   type PeriodoId,
 } from "@/lib/metricas";
 
@@ -55,10 +61,23 @@ const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" 
 const num = new Intl.NumberFormat("pt-BR");
 
 const COLUNAS =
-  "campanha_id, campanha_nome, status, data, investimento, impressoes, cliques, leads, conversoes";
+  "campanha_id, campanha_nome, status, data, investimento, impressoes, cliques, leads, conversoes, acoes";
 
-/** types.ts é gerado pelo Lovable e ainda não conhece `metricas_campanhas`. */
+/** types.ts é gerado pelo Lovable e ainda não conhece as tabelas novas. */
 const db = supabase as unknown as SupabaseClient;
+
+type Config = {
+  nome: string;
+  metricas: MetricaId[];
+  acao_lead: string | null;
+  acao_conversao: string | null;
+};
+
+function formatar(valor: number, formato: "brl" | "num" | "pct"): string {
+  if (formato === "brl") return brl.format(valor);
+  if (formato === "pct") return `${valor.toFixed(2)}%`;
+  return num.format(valor);
+}
 
 function diaCurto(data: string): string {
   return new Date(`${data}T12:00:00`).toLocaleDateString("pt-BR", {
@@ -94,65 +113,112 @@ function MetricasPage() {
 
 function Painel({ perfil }: { perfil: Perfil }) {
   const { cliente: selecionado, pronto } = useClienteSelecionado();
+  const sincronizar = useServerFn(sincronizarMetricasMeta);
+
   const [periodo, setPeriodo] = useState<PeriodoId>("30d");
+  const [personalizado, setPersonalizado] = useState<Janela>(() => intervalo("30d"));
   const [linhas, setLinhas] = useState<LinhaCampanha[]>([]);
+  const [config, setConfig] = useState<Config | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
-  /** null = todas as campanhas; caso contrário, os ids escolhidos. */
   const [selecionadas, setSelecionadas] = useState<string[] | null>(null);
+  const [sincronizando, setSincronizando] = useState(false);
+  const [aviso, setAviso] = useState<string | null>(null);
 
-  // A agência vê a empresa escolhida em "Selecionar Cliente"; o cliente vê a dele.
   const clienteId = perfil.role === "agencia" ? (selecionado?.cliente_id ?? null) : perfil.cliente_id;
+  const podeSincronizar = perfil.role === "agencia";
 
-  useEffect(() => {
-    if (!pronto) return;
+  const janela = useMemo(
+    () => intervalo(periodo, personalizado),
+    [periodo, personalizado],
+  );
+
+  const carregar = useCallback(async () => {
     if (!clienteId) {
       setCarregando(false);
       return;
     }
-    let ativo = true;
     setCarregando(true);
-    const janela = intervalo(periodo);
-    const anterior = intervaloAnterior(periodo);
+    const anterior = janelaAnterior(janela);
 
-    db
-      .from("metricas_campanhas")
-      .select(COLUNAS)
-      .eq("cliente_id", clienteId)
-      .gte("data", anterior.desde)
-      .lte("data", janela.ate)
-      .then(({ data, error }) => {
-        if (!ativo) return;
-        if (error) setErro(error.message);
-        else {
-          setErro(null);
-          setLinhas((data as LinhaCampanha[]) ?? []);
-        }
-        setCarregando(false);
+    const [metricas, cliente] = await Promise.all([
+      db
+        .from("metricas_campanhas")
+        .select(COLUNAS)
+        .eq("cliente_id", clienteId)
+        .gte("data", anterior.desde)
+        .lte("data", janela.ate),
+      db
+        .from("clientes")
+        .select("nome, metricas_kpis, acao_lead, acao_conversao")
+        .eq("id", clienteId)
+        .maybeSingle(),
+    ]);
+
+    if (metricas.error) setErro(metricas.error.message);
+    else {
+      setErro(null);
+      setLinhas((metricas.data as LinhaCampanha[]) ?? []);
+    }
+
+    const c = cliente.data as {
+      nome?: string;
+      metricas_kpis?: unknown;
+      acao_lead?: string | null;
+      acao_conversao?: string | null;
+    } | null;
+    setConfig({
+      nome: c?.nome ?? "",
+      metricas: lerMetricasConfig(c?.metricas_kpis),
+      acao_lead: c?.acao_lead ?? null,
+      acao_conversao: c?.acao_conversao ?? null,
+    });
+
+    setCarregando(false);
+  }, [clienteId, janela]);
+
+  useEffect(() => {
+    if (!pronto) return;
+    void carregar();
+  }, [carregar, pronto]);
+
+  async function puxarDaMeta() {
+    if (!clienteId) return;
+    setSincronizando(true);
+    setAviso(null);
+    setErro(null);
+    try {
+      const res = await sincronizar({
+        data: { clienteId, desde: janela.desde, ate: janela.ate },
       });
-    return () => {
-      ativo = false;
-    };
-  }, [clienteId, periodo, pronto]);
+      setAviso(
+        `${res.dias} dias e ${res.campanhas} campanhas atualizados direto da Meta.`,
+      );
+      await carregar();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Não foi possível sincronizar.");
+    }
+    setSincronizando(false);
+  }
+
+  const acaoLead = config?.acao_lead ?? null;
+  const acaoConversao = config?.acao_conversao ?? null;
 
   const { campanhas, atual, anterior, grafico, tabela } = useMemo(() => {
-    const janela = intervalo(periodo);
     const daJanela = linhas.filter((l) => l.data >= janela.desde && l.data <= janela.ate);
     const daAnterior = linhas.filter((l) => l.data < janela.desde);
-
-    const lista = campanhasDe(daJanela);
     const filtrar = (ls: LinhaCampanha[]) =>
       selecionadas === null ? ls : ls.filter((l) => selecionadas.includes(l.campanha_id));
 
     const filtradas = filtrar(daJanela);
     return {
-      campanhas: lista,
-      atual: totais(filtradas),
-      anterior: totais(filtrar(daAnterior)),
-      grafico: porDia(filtradas).map((d) => ({ ...d, data: diaCurto(d.data) })),
-      tabela: porCampanha(filtradas),
+      campanhas: campanhasDe(daJanela),
+      atual: totais(filtradas, acaoLead, acaoConversao),
+      anterior: totais(filtrar(daAnterior), acaoLead, acaoConversao),
+      grafico: porDia(filtradas, acaoLead).map((d) => ({ ...d, data: diaCurto(d.data) })),
+      tabela: porCampanha(filtradas, acaoLead),
     };
-  }, [linhas, periodo, selecionadas]);
+  }, [linhas, janela, selecionadas, acaoLead, acaoConversao]);
 
   if (!clienteId) {
     return (
@@ -162,9 +228,11 @@ function Painel({ perfil }: { perfil: Perfil }) {
     );
   }
 
+  const kpis = config?.metricas ?? [];
+
   return (
     <>
-      <div className="mt-4 grid grid-cols-[minmax(0,1fr)] items-end gap-4 sm:flex sm:justify-between">
+      <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <h1 className="text-2xl font-bold text-ink sm:text-3xl">Dashboard de Métricas</h1>
         <div className="flex flex-wrap items-center gap-1.5">
           <FiltroCampanhas
@@ -186,10 +254,52 @@ function Painel({ perfil }: { perfil: Perfil }) {
               {p.label}
             </button>
           ))}
+          {podeSincronizar ? (
+            <button
+              type="button"
+              onClick={() => void puxarDaMeta()}
+              disabled={sincronizando}
+              className="inline-flex items-center gap-1.5 rounded-full bg-brand px-3 py-1.5 text-xs font-semibold text-brand-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+            >
+              <RefreshCw className={`size-3.5 ${sincronizando ? "animate-spin" : ""}`} />
+              {sincronizando ? "Sincronizando…" : "Sincronizar"}
+            </button>
+          ) : null}
         </div>
       </div>
 
+      {periodo === "personalizado" ? (
+        <div className="mt-3 flex flex-wrap items-end gap-3 rounded-xl border border-border bg-card px-4 py-3">
+          <label className="text-xs font-medium text-ink-muted">
+            De
+            <input
+              type="date"
+              value={personalizado.desde}
+              max={personalizado.ate}
+              onChange={(e) => setPersonalizado((j) => ({ ...j, desde: e.target.value }))}
+              className="mt-1 block rounded-lg border border-input bg-background px-2 py-1.5 text-sm text-ink outline-none focus:border-brand"
+            />
+          </label>
+          <label className="text-xs font-medium text-ink-muted">
+            Até
+            <input
+              type="date"
+              value={personalizado.ate}
+              min={personalizado.desde}
+              onChange={(e) => setPersonalizado((j) => ({ ...j, ate: e.target.value }))}
+              className="mt-1 block rounded-lg border border-input bg-background px-2 py-1.5 text-sm text-ink outline-none focus:border-brand"
+            />
+          </label>
+          {podeSincronizar ? (
+            <p className="text-xs text-ink-muted">
+              Escolha o intervalo e clique em Sincronizar para puxar exatamente esse período.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
       {erro ? <p className="mt-4 text-sm text-destructive">{erro}</p> : null}
+      {aviso ? <p className="mt-4 text-sm text-success">{aviso}</p> : null}
 
       {carregando ? (
         <div className="mt-10 grid place-items-center py-10">
@@ -198,63 +308,30 @@ function Painel({ perfil }: { perfil: Perfil }) {
       ) : linhas.length === 0 ? (
         <div className="mt-8 rounded-2xl border border-border bg-card p-8 text-center shadow-card">
           <p className="text-sm text-ink-muted">
-            Nenhuma métrica importada ainda para este período.
+            Nenhuma métrica importada para este período.
           </p>
-          {perfil.role === "agencia" ? (
+          {podeSincronizar ? (
             <p className="mt-2 text-sm text-ink-muted">
-              Use{" "}
-              <Link to="/agencia/clientes" className="font-semibold text-brand hover:underline">
-                Sincronizar em Configurar Clientes
-              </Link>{" "}
-              para puxar os dados da Meta.
+              Use o botão Sincronizar acima para puxar os dados da Meta.
             </p>
           ) : null}
         </div>
       ) : (
         <>
           <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <KpiCard
-              rotulo="Investimento"
-              valor={brl.format(atual.investimento)}
-              variacao={variacao(atual.investimento, anterior.investimento)}
-            />
-            <KpiCard
-              rotulo="Impressões"
-              valor={num.format(atual.impressoes)}
-              variacao={variacao(atual.impressoes, anterior.impressoes)}
-            />
-            <KpiCard
-              rotulo="Cliques"
-              valor={num.format(atual.cliques)}
-              variacao={variacao(atual.cliques, anterior.cliques)}
-            />
-            <KpiCard
-              rotulo="CTR"
-              valor={`${atual.ctr.toFixed(2)}%`}
-              variacao={variacao(atual.ctr, anterior.ctr)}
-            />
-            <KpiCard
-              rotulo="CPC"
-              valor={brl.format(atual.cpc)}
-              variacao={variacao(atual.cpc, anterior.cpc)}
-              inverso
-            />
-            <KpiCard
-              rotulo="Leads"
-              valor={num.format(atual.leads)}
-              variacao={variacao(atual.leads, anterior.leads)}
-            />
-            <KpiCard
-              rotulo="CPL"
-              valor={brl.format(atual.cpl)}
-              variacao={variacao(atual.cpl, anterior.cpl)}
-              inverso
-            />
-            <KpiCard
-              rotulo="Conversões"
-              valor={num.format(atual.conversoes)}
-              variacao={variacao(atual.conversoes, anterior.conversoes)}
-            />
+            {kpis.map((id) => {
+              const meta = METRICAS.find((m) => m.id === id);
+              if (!meta) return null;
+              return (
+                <KpiCard
+                  key={id}
+                  rotulo={meta.label}
+                  valor={formatar(atual[id], meta.formato)}
+                  variacao={variacao(atual[id], anterior[id])}
+                  inverso={meta.inverso}
+                />
+              );
+            })}
           </div>
 
           <section className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-card">
@@ -345,6 +422,13 @@ function Painel({ perfil }: { perfil: Perfil }) {
               </table>
             </div>
           </section>
+
+          <p className="mt-4 text-xs text-ink-muted">
+            Período: {diaCurto(janela.desde)} a {diaCurto(janela.ate)}.
+            {periodo === "7d" || periodo === "30d"
+              ? " Presets terminam ontem, como no Gerenciador de Anúncios."
+              : ""}
+          </p>
         </>
       )}
     </>
