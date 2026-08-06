@@ -25,11 +25,11 @@ export const Route = createFileRoute("/_authenticated/agencia/visualizar")({
   component: SelecionarCliente,
 });
 
-type Conta = {
+/** Uma empresa cadastrada em Configurar Clientes. */
+type Empresa = {
   id: string;
-  nome: string | null;
-  email: string;
-  cliente_id: string | null;
+  nome: string;
+  identificador: string;
 };
 
 function SelecionarCliente() {
@@ -53,7 +53,7 @@ function SelecionarCliente() {
               <div className="min-w-0">
                 <h1 className="truncate text-2xl font-bold text-ink">Selecionar Cliente</h1>
                 <p className="text-sm text-ink-muted">
-                  Escolha a conta para abrir o portal com a visão do cliente.
+                  Escolha a empresa para abrir o portal com a visão do cliente.
                 </p>
               </div>
             </div>
@@ -68,7 +68,7 @@ function SelecionarCliente() {
 
 function Lista() {
   const navigate = useNavigate();
-  const [contas, setContas] = useState<Conta[]>([]);
+  const [empresas, setEmpresas] = useState<Empresa[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [busca, setBusca] = useState("");
@@ -76,14 +76,13 @@ function Lista() {
   useEffect(() => {
     let ativo = true;
     supabase
-      .from("profiles")
-      .select("id, nome, email, cliente_id")
-      .eq("role", "cliente")
+      .from("clientes")
+      .select("id, nome, identificador")
       .order("nome", { ascending: true })
       .then(({ data, error }) => {
         if (!ativo) return;
         if (error) setErro(error.message);
-        else setContas((data as Conta[]) ?? []);
+        else setEmpresas((data as Empresa[]) ?? []);
         setCarregando(false);
       });
     return () => {
@@ -93,18 +92,17 @@ function Lista() {
 
   const filtradas = useMemo(() => {
     const t = busca.trim().toLowerCase();
-    if (!t) return contas;
-    return contas.filter(
-      (c) => (c.nome ?? "").toLowerCase().includes(t) || c.email.toLowerCase().includes(t),
+    if (!t) return empresas;
+    return empresas.filter(
+      (e) => e.nome.toLowerCase().includes(t) || e.identificador.toLowerCase().includes(t),
     );
-  }, [busca, contas]);
+  }, [busca, empresas]);
 
-  function abrir(conta: Conta) {
+  function abrir(empresa: Empresa) {
     definirClienteSelecionado({
-      id: conta.id,
-      nome: conta.nome ?? conta.email,
-      email: conta.email,
-      cliente_id: conta.cliente_id,
+      cliente_id: empresa.id,
+      nome: empresa.nome,
+      identificador: empresa.identificador,
     });
     navigate({ to: "/cliente" });
   }
@@ -128,32 +126,42 @@ function Lista() {
         <input
           value={busca}
           onChange={(e) => setBusca(e.target.value)}
-          placeholder="Buscar por nome ou e-mail"
+          placeholder="Buscar por nome ou identificador"
           className="h-10 w-full rounded-xl border border-border bg-card pl-9 pr-3 text-sm text-ink outline-none transition-colors placeholder:text-ink-muted focus:border-brand"
         />
       </div>
 
       {filtradas.length === 0 ? (
         <p className="mt-8 text-sm text-ink-muted">
-          Nenhum cliente encontrado. Cadastre contas em Configurar Clientes.
+          {empresas.length === 0 ? (
+            <>
+              Nenhuma empresa cadastrada ainda.{" "}
+              <Link to="/agencia/clientes" className="font-semibold text-brand hover:underline">
+                Cadastre em Configurar Clientes
+              </Link>
+              .
+            </>
+          ) : (
+            "Nenhuma empresa encontrada para esta busca."
+          )}
         </p>
       ) : (
         <div className="mt-4 flex flex-col gap-3">
-          {filtradas.map((conta) => (
+          {filtradas.map((empresa) => (
             <button
-              key={conta.id}
+              key={empresa.id}
               type="button"
-              onClick={() => abrir(conta)}
+              onClick={() => abrir(empresa)}
               className="flex w-full items-center gap-3 rounded-2xl border border-border bg-card p-4 text-left shadow-card transition-all duration-150 hover:-translate-y-0.5 hover:shadow-card-hover"
             >
               <span className="grid size-10 shrink-0 place-items-center rounded-full bg-brand text-sm font-semibold text-brand-foreground">
-                {(conta.nome || conta.email).trim().charAt(0).toUpperCase()}
+                {empresa.nome.trim().charAt(0).toUpperCase()}
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-bold text-ink">
-                  {conta.nome || conta.email}
+                <span className="block truncate text-sm font-bold text-ink">{empresa.nome}</span>
+                <span className="block truncate text-xs text-ink-muted">
+                  {empresa.identificador}
                 </span>
-                <span className="block truncate text-xs text-ink-muted">{conta.email}</span>
               </span>
               <ChevronRight className="size-4 shrink-0 text-ink-muted" />
             </button>
