@@ -284,12 +284,23 @@ function Quadro({ editavel, perfilId }: { editavel: boolean; perfilId: string })
     const cartao = cartoes.find((c) => c.id === cartaoId);
     if (!cartao) return;
 
-    const origem = (porColuna.get(cartao.coluna_id) ?? []).filter((c) => c.id !== cartaoId);
+    const listaOrigem = porColuna.get(cartao.coluna_id) ?? [];
+    const indiceOriginal = listaOrigem.findIndex((c) => c.id === cartaoId);
+    const origem = listaOrigem.filter((c) => c.id !== cartaoId);
     const destino =
       cartao.coluna_id === colunaDestino ? origem : [...(porColuna.get(colunaDestino) ?? [])];
 
-    const posicao = indice === null || indice > destino.length ? destino.length : indice;
-    destino.splice(posicao, 0, { ...cartao, coluna_id: colunaDestino });
+    let posicao = indice === null ? destino.length : indice;
+    // Na mesma coluna o cartão já saiu da lista, então os índices abaixo dele
+    // subiram um: arrastar para baixo cairia uma posição acima do pretendido.
+    if (cartao.coluna_id === colunaDestino && indiceOriginal >= 0 && indiceOriginal < posicao) {
+      posicao -= 1;
+    }
+    posicao = Math.max(0, Math.min(posicao, destino.length));
+
+    // Inserido sem alterar o coluna_id: é essa diferença que faz a comparação
+    // abaixo reconhecer que o cartão mudou de coluna e precisa ser gravado.
+    destino.splice(posicao, 0, cartao);
 
     const atualizacoes: { id: string; coluna_id: string; ordem: number }[] = [];
     destino.forEach((c, idx) => {
